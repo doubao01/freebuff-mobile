@@ -1,20 +1,18 @@
 {
-  "version": "0.0.4",
+  "version": "0.0.5",
   "url": "https://github.com/doubao01/freebuff-mobile/releases/latest",
-  "summary": "修 CI 矩阵跑在访客态:发版流程补 --login,矩阵补欢迎页兜底",
+  "summary": "修跑批开始时设备没被叫醒:先亮屏、去锁屏、设常亮再开跑",
   "notes": [
-    "修 CI 矩阵跑在访客态:发版流程补 --login,矩阵补欢迎页兜底",
-    "修 CI 矩阵「App 掉回桌面 → 后面全假 FAIL」:拉起/回会话都要自证,失败留全量 logcat",
-    "修 CI 引导够不着「自定义模型」:AVD 指定 pixel_5 设备配置 + 放宽滚动次数",
-    "修 CI 模拟器无硬件加速:放开 /dev/kvm 权限,不可用即快速失败",
-    "修 CI 模拟器起不来:钉死 AVD 目录,给每个等待加硬超时",
-    "发版 v0.0.4:端到端矩阵接入发版门禁,29 场景全绿才放行 Release",
-    "应用内更新:下载进度与完整性校验,瞬时失败静默重试,Release 说明分组摘要",
-    "发版 v0.0.3:刷新检查更新数据源 [skip ci]"
+    "修跑批开始时设备没被叫醒:先亮屏、去锁屏、设常亮再开跑",
+    "修 CI 引导在软键盘上填不进表单:摘掉软键盘再输入,长串分段递",
+    "发版 v0.0.5:中英双语与无障碍,消息级操作 / 长任务保活 / 端侧子代理",
+    "修 CI 矩阵在 i18n 之后 29 例全假 FAIL:钉应用级语言、预授权通知、FAB 按 content-desc 定位",
+    "中英双语与无障碍;i18n 后再补消息级操作、长任务保活与端侧子代理",
+    "发版 v0.0.4:刷新检查更新数据源 [skip ci]"
   ],
   "apk": {
-    "url": "https://github.com/doubao01/freebuff-mobile/releases/download/v0.0.4/FreebuffMobile-0.0.4-release.apk",
-    "sha256": "645819df1eecf0ac2c41a840a4298ee6b607b2cec215a85a3f606250fc9daa45",
-    "size": 1489122
+    "url": "https://github.com/doubao01/freebuff-mobile/releases/download/v0.0.5/FreebuffMobile-0.0.5-release.apk",
+    "sha256": "dba3cb5f45f2d8350ea9a3eaedf9abebe3d48fdae0e97f44ae7807243e57946e",
+    "size": 1715410
   }
 }
