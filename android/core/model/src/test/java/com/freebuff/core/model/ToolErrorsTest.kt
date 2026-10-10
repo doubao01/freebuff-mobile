@@ -71,6 +71,18 @@ class ToolErrorsTest {
 
         assertTrue(ToolErrors.http("web_search", 503, "").contains("NETWORK"))
 
+        // 写路径特有的两个码:处方必须指向「重取现状 / 改参数」,不能落成 INTERNAL 的「换工具」
+        val conflict = ToolErrors.http("github_commit_files", 409, "")
+        assertTrue(conflict.contains("CONFLICT"))
+        assertTrue("409 要说清是期间被改动、要重取现状", conflict.contains("重新拉取"))
+        assertTrue("写路径的冲突绝不能劝强推", conflict.contains("不要强推"))
+        assertTrue("409 不该落成 INTERNAL", !conflict.contains("INTERNAL"))
+
+        val invalid = ToolErrors.http("github_create_branch", 422, "")
+        assertTrue(invalid.contains("BAD_VALUE"))
+        assertTrue("422 要指向分支名非法 / 已存在 / 无差异这些真实原因", invalid.contains("分支名非法"))
+        assertTrue("422 不该落成 INTERNAL", !invalid.contains("INTERNAL"))
+
         val hinted = ToolErrors.http("github_get_file", 404, "", hint = "先用 github_search_repositories 搜仓库")
         assertTrue("工具特有的下一步要带上", hinted.contains("github_search_repositories"))
     }

@@ -8,6 +8,7 @@ import com.freebuff.core.data.db.SessionWithMessages
 import com.freebuff.core.data.db.toDomain
 import com.freebuff.core.data.db.toEntity
 import com.freebuff.core.model.ChatMsg
+import com.freebuff.core.model.MessageOps
 import com.freebuff.core.model.MsgSteps
 import com.freebuff.core.model.Session
 import com.freebuff.core.model.uid
@@ -46,8 +47,10 @@ class SessionRepository @Inject constructor(
     /** 追加消息并刷新会话预览。返回更新后的会话。 */
     suspend fun appendMessages(sessionId: String, messages: List<ChatMsg>): Session? {
         val cur = dao.session(sessionId) ?: return null
-        val existing = dao.sessionWithMessages(sessionId)?.messages.orEmpty().size
-        val entities = messages.mapIndexed { i, m -> m.toEntity(sessionId, (existing + i).toLong()) }
+        // 取号用「最大序号 + 1」而不是条数:单条删除会留下序号空洞(见 MessageOps.nextSort)
+        val existing = dao.sessionWithMessages(sessionId)?.messages.orEmpty().map { it.sort }
+        val start = MessageOps.nextSort(existing)
+        val entities = messages.mapIndexed { i, m -> m.toEntity(sessionId, start + i) }
         dao.upsertMessages(entities)
         val lastText = messages.lastOrNull { it.role == "user" }?.text.orEmpty()
         val preview = if (lastText.isNotBlank()) lastText.take(30) + (if (lastText.length > 30) "…" else "") else cur.preview
@@ -61,6 +64,25 @@ class SessionRepository @Inject constructor(
         entities.firstOrNull { it.id == messageId }?.let { old ->
             dao.upsertMessages(listOf(updated.toEntity(sessionId, old.sort)))
         }
+    }
+
+    /** 批量删除消息(消息级操作:单条删除、编辑重发时的截断)。序号留空洞,不重排。 */
+    suspend fun deleteMessages(sessionId: String, ids: List<String>) {
+        if (ids.isNotEmpty()) dao.deleteMessageIds(sessionId, ids)
+    }
+
+    /**
+     * 按剩余消息重算会话预览。
+     *
+     * 消息被删/被改写后,列表页预览可能还指着已经不存在的正文(实测观感是「点进去找不到那句话」)。
+     * 规则与 [appendMessages] 一致:取最后一条用户消息;会话里没有用户消息时退到末条。
+     */
+    suspend fun refreshPreview(sessionId: String) {
+        val cur = dao.session(sessionId) ?: return
+        val msgs = dao.sessionWithMessages(sessionId)?.messages.orEmpty().sortedBy { it.sort }
+        val src = msgs.lastOrNull { it.role == "user" }?.text ?: msgs.lastOrNull()?.text.orEmpty()
+        val preview = if (src.isBlank()) "" else src.take(30) + (if (src.length > 30) "…" else "")
+        if (preview != cur.preview) dao.upsertSession(cur.copy(preview = preview))
     }
 
     suspend fun updateTitle(sessionId: String, title: String) {

@@ -41,6 +41,10 @@ interface FreebuffDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertMessages(messages: List<MessageEntity>)
 
+    /** 按 id 删若干条消息(消息级操作:单条删除、编辑重发时的截断)。限定 sessionId 以免误删同 id 行。 */
+    @Query("DELETE FROM messages WHERE sessionId = :sessionId AND id IN (:ids)")
+    suspend fun deleteMessageIds(sessionId: String, ids: List<String>)
+
     @Query("DELETE FROM messages WHERE sessionId = :sessionId")
     suspend fun deleteMessages(sessionId: String)
 

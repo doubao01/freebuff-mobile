@@ -88,11 +88,40 @@ class ToolsTest {
             assertTrue("${t.name} 缺调用示例", t.example.startsWith(t.name + "({"))
             assertTrue("${t.name} 的说明书写得太短,没讲清做什么/何时用", t.description.length >= 20)
             assertTrue("${t.name} 的参数描述不能为空", t.params.all { it.desc.isNotBlank() })
+            // 类型闭集:array 只允许出现在有多文件语义的工具上(见下面的结构断言),
+            // 其余一律是弱模型最吃得住的三类标量。
             assertTrue(
                 "${t.name} 有非法参数类型",
-                t.params.all { it.type in setOf("string", "integer", "boolean") },
+                t.params.all { it.type in setOf("string", "integer", "boolean", "array") },
             )
+            // array 参数必须声明元素字段,且元素字段只能是字符串 —— schema 要说得出嵌套结构,
+            // 否则模型只能自己拼 JSON 字符串(实测最容易写坏的一类入参)。
+            t.params.filter { it.type == "array" }.forEach { p ->
+                assertTrue("${t.name}.${p.name} 是数组却没声明 itemFields", p.itemFields.isNotEmpty())
+                assertTrue(
+                    "${t.name}.${p.name} 的数组元素只能是字符串字段",
+                    p.itemFields.all { it.type == "string" },
+                )
+                assertTrue("${t.name}.${p.name} 的数组元素字段要有描述", p.itemFields.all { it.desc.isNotBlank() })
+            }
         }
+    }
+
+    @Test
+    fun `多文件提交的 schema 说出了嵌套结构`() {
+        val commit = DefaultTools.find("github_commit_files")!!
+        val files = commit.params.first { it.name == "files" }
+        assertEquals("array", files.type)
+        assertEquals(listOf("path", "content"), files.itemFields.map { it.name })
+
+        // 写进 schema 的是 items 对象,不是一坨待转义的字符串
+        val schema = commit.toJsonObject().getJSONObject("function")
+            .getJSONObject("parameters").getJSONObject("properties").getJSONObject("files")
+        assertEquals("array", schema.getString("type"))
+        val items = schema.getJSONObject("items")
+        assertEquals("object", items.getString("type"))
+        assertTrue(items.getJSONObject("properties").has("path"))
+        assertEquals(2, items.getJSONArray("required").length())
     }
 
     @Test
@@ -168,6 +197,46 @@ class ToolsTest {
             DefaultTools.validate(save, JSONObject("{\"block\":\"memory\",\"content\":\"x\"}"))
                 .any { it is ToolErrors.ArgProblem.Enum },
         )
+    }
+
+    @Test
+    fun `写工具的别名能归一到规范参数名`() {
+        // 弱模型常把 branch 写成 ref/name、from 写成 base、files[i].path 写成 file —— 都要能救回。
+        // 坐不住的后果比只读工具重:归不回来会撞「缺必填」浪费一轮,更糟的是把「起点」当成「目标」。
+        val create = DefaultTools.find("github_create_branch")!!
+        val (b, pb) = DefaultTools.prepare(
+            create,
+            JSONObject("""{"owner":"me","repo":"notes","name":"agent/fix","base":"main"}"""),
+        )
+        assertTrue("别名应被接受:$pb", pb.isEmpty())
+        assertEquals("agent/fix", b.getString("branch"))
+        assertEquals("main", b.getString("from"))
+
+        val commit = DefaultTools.find("github_commit_files")!!
+        val (c, pc) = DefaultTools.prepare(
+            commit,
+            JSONObject(
+                """{"owner":"me","repo":"notes","ref":"agent/fix","commit_message":"fix","files":[{"file":"README.md","content":"# hi"}]}""",
+            ),
+        )
+        assertTrue("别名应被接受:$pc", pc.isEmpty())
+        assertEquals("agent/fix", c.getString("branch"))
+        assertEquals("fix", c.getString("message"))
+        assertEquals(
+            "files 里的 file 也要归一到 path",
+            "README.md",
+            c.getJSONArray("files").getJSONObject(0).getString("path"),
+        )
+
+        val pr = DefaultTools.find("github_create_pull_request")!!
+        val (p, pp) = DefaultTools.prepare(
+            pr,
+            JSONObject("""{"owner":"me","repo":"notes","source":"agent/fix","target":"main","name":"fix"}"""),
+        )
+        assertTrue("别名应被接受:$pp", pp.isEmpty())
+        assertEquals("agent/fix", p.getString("head"))
+        assertEquals("main", p.getString("base"))
+        assertEquals("fix", p.getString("title"))
     }
 
     @Test

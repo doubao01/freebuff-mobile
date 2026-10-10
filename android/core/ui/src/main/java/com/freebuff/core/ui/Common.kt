@@ -24,6 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -61,8 +65,11 @@ fun RowCard(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -
 }
 
 /**
- * 设置行。trailing 默认按其文本高低亮;accent=true 时强制高亮(如"已连接"状态),
- * accent=false 且文本是"未连接/未添加"时置灰。danger=true 用于破坏性操作(整行红色)。
+ * 设置行。trailing 默认高亮;dim=true 时置灰(用于「未连接/未添加」这类空状态),
+ * accent=true 强制高亮(如"已连接")。danger=true 用于破坏性操作(整行红色)。
+ *
+ * 为什么 dim 是参数而不在组件内比字符串:老的实现拿 trailing 和"未连接"/"未添加"对比,
+ * 文案一旦多语言化就再也不相等 —— 置灰会静默失效。空状态是调用方知道的事,就由调用方声明。
  */
 @Composable
 fun SetRow(
@@ -71,6 +78,7 @@ fun SetRow(
     sub: String = "",
     trailing: String = "",
     accent: Boolean = false,
+    dim: Boolean = false,
     danger: Boolean = false,
     onClick: (() -> Unit)? = null,
 ) {
@@ -97,9 +105,8 @@ fun SetRow(
             )
         }
         if (trailing.isNotEmpty()) {
-            val dim = !accent && (trailing == "未连接" || trailing == "未添加")
             Text(
-                trailing, color = if (dim) t.text3 else t.accent, fontSize = 12.sp,
+                trailing, color = if (dim && !accent) t.text3 else t.accent, fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = 8.dp),
             )
         }
@@ -133,15 +140,18 @@ fun ModelChip(modelName: String, onClick: () -> Unit, modifier: Modifier = Modif
     val t = LocalTokens.current
     // 未选模型时:圆点转为告警色、文案转弱 —— 一眼看出「还没选模型」需要用户动手
     val picked = modelName.isNotBlank()
+    // 整块芯片是一个按钮:onClickLabel 让读屏说清「双击可以做什么」,而不是只读一个模型名
+    val pickLabel = stringResource(R.string.cd_model_picker)
     Row(
-        modifier = modifier.clip(RFull).background(t.chip).clickable { onClick() }
+        modifier = modifier.clip(RFull).background(t.chip)
+            .clickable(onClickLabel = pickLabel, role = Role.Button) { onClick() }
             .padding(start = 9.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.size(7.dp).clip(RFull).background(if (picked) t.accent else t.warn))
         Spacer(Modifier.width(6.dp))
         Text(
-            modelName.ifBlank { "选择模型" },
+            modelName.ifBlank { stringResource(R.string.model_chip_empty) },
             color = if (picked) t.text2 else t.warn, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
             maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.widthIn(max = 170.dp),
@@ -159,7 +169,7 @@ fun ModelChip(modelName: String, onClick: () -> Unit, modifier: Modifier = Modif
 @Composable
 fun SegRow(
     options: List<String>,
-    selected: Int,
+    selectedIndex: Int,
     modifier: Modifier = Modifier.fillMaxWidth(),
     onSelect: (Int) -> Unit,
 ) {
@@ -168,10 +178,12 @@ fun SegRow(
         .border(1.dp, t.border, RoundedCornerShape(12.dp)).padding(3.dp)) {
         options.forEachIndexed { i, opt ->
             Text(
-                opt, color = if (i == selected) t.accentInk else t.text2, fontSize = 13.sp,
+                opt, color = if (i == selectedIndex) t.accentInk else t.text2, fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center,
                 modifier = Modifier.weight(1f).clip(RoundedCornerShape(9.dp))
-                    .background(if (i == selected) t.accent else Color.Transparent)
+                    .background(if (i == selectedIndex) t.accent else Color.Transparent)
+                    // 选中态平时只靠底色表达,读屏与无障碍树里看不出当前选的是哪个 —— 补 selected
+                    .semantics { selected = i == selectedIndex }
                     .clickable { onSelect(i) }.padding(vertical = 8.dp),
             )
         }

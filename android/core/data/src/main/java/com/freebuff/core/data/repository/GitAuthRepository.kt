@@ -54,7 +54,10 @@ class RealGitAuthRepository @Inject constructor(
     private val github: GithubApi,
     private val settings: SettingsRepository,
     private val crypto: CryptoManager,
-) : GitAuthRepository {
+) : GitAuthRepository, GitTokenProvider {
+
+    /** 执行层(写工具)读 token 的口:未授权时返回空串。 */
+    override suspend fun token(): String = readToken()
 
     override fun connect(): Flow<GitConnectStep> = flow {
         if (clientId.isBlank()) {

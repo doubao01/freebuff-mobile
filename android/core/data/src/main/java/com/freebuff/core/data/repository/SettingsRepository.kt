@@ -34,6 +34,9 @@ class SettingsRepository @Inject constructor(
         /** 上下文记忆开关(Letta 式记忆块注入 + save_memory 自编辑)。 */
         const val KEY_MEMORY_ENABLED = "memoryEnabled"
 
+        /** 计划模式:开启时写工具对模型不可见(与后端 plan 模式同构)。 */
+        const val KEY_PLAN_MODE = "planMode"
+
         /** 深度思考(思维链)模式:off / auto / on,取值见 core:model 的 Reasoning。 */
         const val KEY_REASONING_MODE = "reasoningMode"
 
@@ -110,6 +113,12 @@ class SettingsRepository @Inject constructor(
     /** 上下文记忆开关:开启后注入核心记忆块并允许模型 save_memory(默认开)。 */
     val memoryEnabled = getStringFlow(KEY_MEMORY_ENABLED, "true").map { it.toBoolean() }
 
+    /**
+     * 计划模式开关:开启后写工具(github_create_branch / github_commit_files /
+     * github_create_pull_request)从模型可见的工具集里物理剔除(默认关)。
+     */
+    val planMode = getStringFlow(KEY_PLAN_MODE, "false").map { it.toBoolean() }
+
     /** 深度思考(思维链)模式:默认自动 —— 按模型名识别思考参数,不认识的模型不送字段。 */
     val reasoningMode = getStringFlow(KEY_REASONING_MODE, Reasoning.MODE_AUTO)
 
@@ -125,6 +134,8 @@ class SettingsRepository @Inject constructor(
     suspend fun setToolsEnabled(v: Boolean) = setBool(KEY_TOOLS_ENABLED, v)
 
     suspend fun setMemoryEnabled(v: Boolean) = setBool(KEY_MEMORY_ENABLED, v)
+
+    suspend fun setPlanMode(v: Boolean) = setBool(KEY_PLAN_MODE, v)
 
     suspend fun setReasoningMode(mode: String) = setString(KEY_REASONING_MODE, mode)
 

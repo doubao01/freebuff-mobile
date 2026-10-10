@@ -100,6 +100,43 @@ class ToolExecutorsTest {
     }
 
     @Test
+    fun `注册表里每个 DATA 工具都有真实分派`() {
+        // 用「注册表 route == DATA」对「分派表」求全等:新增工具漏写一个 case 就红。
+        // 过去漏写会静默落进「未知工具」分支 —— 工具在说明书里存在、模型也能调,却永远执行不了。
+        val data = com.freebuff.core.model.DefaultTools
+            .ofRoute(com.freebuff.core.model.ToolRoute.DATA).map { it.name }.toSet()
+        assertEquals(data, ex.dispatchedTools)
+    }
+
+    @Test
+    fun `HOST 工具交给会话宿主 没有宿主时回未知工具信封`() = runBlocking {
+        // 有宿主:执行器按注册表 route 分流,HOST 工具回调宿主(记忆 / 子代理需要仓库与 UI)
+        val seen = mutableListOf<String>()
+        val host = object : com.freebuff.core.model.ToolHost {
+            override suspend fun executeHostTool(
+                call: ToolCallReq,
+                attempt: Int,
+            ): com.freebuff.core.model.ToolOutcome? {
+                seen += call.name + "@" + attempt
+                return com.freebuff.core.model.ToolOutcome("宿主执行了 " + call.name)
+            }
+        }
+        val ok = ex.execute(
+            ToolCallReq("h1", "memory_recall", """{"user_id":"local","query":"偏好"}"""),
+            attempt = 2,
+            host = host,
+        )
+        assertFalse(ok.isError)
+        assertEquals("宿主执行了 memory_recall", ok.content)
+        assertEquals("宿主应拿到原调用与失败计数", listOf("memory_recall@2"), seen)
+
+        // 没宿主 = 这个执行环境不认识它:回未知工具信封,绝不当作成功
+        val noHost = ex.execute(ToolCallReq("h2", "save_memory", """{"block":"user","content":"x"}"""))
+        assertTrue(noHost.isError)
+        assertTrue(noHost.content.contains("UNKNOWN_TOOL"))
+    }
+
+    @Test
     fun `current_time 返回可读时间`() = runBlocking {
         val r = ex.execute(ToolCallReq("c6", "current_time", "{}"))
         assertFalse(r.isError)

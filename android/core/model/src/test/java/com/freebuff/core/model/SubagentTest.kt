@@ -74,11 +74,38 @@ class SubagentTest {
     }
 
     @Test
-    fun `占位文案说明未执行并给出替代路径`() {
-        val m = Subagent.comingSoonMessage()
-        assertTrue(m.contains("尚未上线"))
-        assertTrue(m.contains("未执行"))
-        assertTrue(m.contains("web_search"))
+    fun `结论回填带来源标签`() {
+        val r = Subagent.formatResult("researcher", 2, listOf("web_search", "web_fetch"), "  结论 A  ")
+        assertTrue(r.startsWith("[子代理 researcher 完成"))
+        assertTrue(r.contains("2 轮工具"))
+        assertTrue(r.contains("web_search、web_fetch"))
+        assertTrue("结论要原样附上(仅去首尾空白)", r.endsWith("结论 A"))
+        // 没调工具也说得通(0 轮)
+        val plain = Subagent.formatResult("analyst", 0, emptyList(), "直接给出结论")
+        assertFalse(plain.contains("轮工具"))
+        assertTrue(plain.endsWith("直接给出结论"))
+    }
+
+    @Test
+    fun `失败回填给主模型的替代路径`() {
+        val f = Subagent.formatFailure("researcher", "子代理超时(120 秒内未完成)")
+        assertTrue(f.contains("未能完成"))
+        assertTrue(f.contains("超时"))
+        assertTrue("要给出替代路径,避免原地重派", f.contains("web_search"))
+    }
+
+    @Test
+    fun `剧本按传入的工具清单说话`() {
+        assertTrue(Subagent.systemPrompt("researcher").contains("web_fetch"))
+        val trimmed = Subagent.systemPrompt("researcher", listOf("web_search"))
+        assertTrue(trimmed.contains("web_search"))
+        assertFalse("被权限摘掉的工具不该写进剧本", trimmed.contains("web_fetch"))
+    }
+
+    @Test
+    fun `请求数上限给收敛留余量`() {
+        assertEquals(Subagent.MAX_TOOL_ROUNDS + 2, Subagent.MAX_REQUESTS)
+        assertTrue(Subagent.MAX_REQUESTS > Subagent.MAX_TOOL_ROUNDS + 1)
     }
 
     @Test

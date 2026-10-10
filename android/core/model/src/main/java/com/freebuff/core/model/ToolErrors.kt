@@ -53,6 +53,7 @@ object ToolErrors {
         UNKNOWN_TOOL("UNKNOWN_TOOL", "工具不存在", false),
         CIRCUIT_OPEN("CIRCUIT_OPEN", "工具已被端上暂停", false),
         NOT_FOUND("NOT_FOUND", "没找到对应资源", true),
+        CONFLICT("CONFLICT", "状态冲突", true),
         AUTH("AUTH", "鉴权或权限不足", false),
         RATE_LIMIT("RATE_LIMIT", "请求过于频繁", true),
         NETWORK("NETWORK", "服务或网络不可用", true),
@@ -238,6 +239,13 @@ object ToolErrors {
                 Kind.AUTH to "该资源需要登录或没有权限;换成公开可访问的资源,或请用户提供授权"
             code == 404 ->
                 Kind.NOT_FOUND to "检查名称/路径拼写是否写错,确认资源确实存在后再重试一次"
+            // 写路径的两个特有码:409 = 期间被推了新提交/目标已存在,422 = 引用名或字段不合法。
+            // 不单独给处方时它们会落到 else 的 INTERNAL(「换其它工具」)——对写操作是错误的方向:
+            // 这两个错的正确动作都是「重新拉一次现状、换参数」,而不是换工具。
+            code == 409 ->
+                Kind.CONFLICT to "目标在期间被改动过(冲突);重新拉取最新分支/名称后再试一次,不要强推"
+            code == 422 ->
+                Kind.BAD_VALUE to "GitHub 判定请求内容不合法(常见:分支名非法、分支已存在、没有差异);按提示改参数再试一次"
             code == 429 ->
                 Kind.RATE_LIMIT to "被限流了;等一会儿再说,或减少调用次数(不要连续重试)"
             code >= 500 ->

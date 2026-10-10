@@ -100,6 +100,11 @@ object DataModule {
     @Singleton
     fun provideGitAuthRepository(real: RealGitAuthRepository): GitAuthRepository = real
 
+    /** 执行层读 token(写工具带鉴权);由已授权的 Git 仓库实现。 */
+    @Provides
+    @Singleton
+    fun provideGitTokenProvider(real: RealGitAuthRepository): com.freebuff.core.data.repository.GitTokenProvider = real
+
     @Provides
     @Singleton
     fun provideDataMigrator(dao: FreebuffDao, crypto: com.freebuff.core.data.security.CryptoManager): DataMigrator =

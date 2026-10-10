@@ -42,24 +42,15 @@ object ToolPermissions {
      */
     val FALLBACK: ToolPermission = ToolPermission.CONFIRM
 
-    /** 各工具的默认分级(按副作用强度)。 */
-    private val DEFAULTS: Map<String, ToolPermission> = mapOf(
-        // 只读/无副作用:免确认
-        "web_search" to ToolPermission.ALLOW,
-        "web_fetch" to ToolPermission.ALLOW,
-        "github_search_repositories" to ToolPermission.ALLOW,
-        "github_get_file" to ToolPermission.ALLOW,
-        "github_get_readme" to ToolPermission.ALLOW,
-        "calculator" to ToolPermission.ALLOW,
-        "current_time" to ToolPermission.ALLOW,
-        "memory_recall" to ToolPermission.ALLOW,
-        // 循环控制类:不是真实副作用,是循环的收工信号/子代理派发。
-        // 早期漏登记的后果是每轮结束都弹「工具执行确认」,用户不点循环就卡住(真机实测)。
-        AgentLoop.COMPLETION_TOOL to ToolPermission.ALLOW,
-        Subagent.TOOL_NAME to ToolPermission.ALLOW,
-        // 有写入或影响后续行为的:默认需确认
-        "save_memory" to ToolPermission.CONFIRM,
-    )
+    /**
+     * 各工具的默认分级:**唯一来源是工具注册表**([AgentTool.permission])。
+     *
+     * 过去这里是一份手抄清单,与 `Tools.kt` 里的定义各存一半 —— 新增工具时漏登记就会
+     * 静默落到 [FALLBACK](CONFIRM):只读工具白弹一次窗,循环控制工具更是每轮都弹
+     * (实测 task_completed 没登记时,循环每收工一次就卡住)。现在两者不可能再分叉。
+     */
+    private val DEFAULTS: Map<String, ToolPermission> =
+        DefaultTools.ALL.associate { it.name to it.permission }
 
     /** 工具的生效权限:用户覆写优先,未覆写用默认,连工具名都未知时用 [FALLBACK]。 */
     fun effective(tool: String, overrides: Map<String, ToolPermission>): ToolPermission =

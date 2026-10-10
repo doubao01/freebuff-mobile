@@ -212,6 +212,7 @@ class RealGitAuthRepositoryTest {
         override fun observeMessages(sessionId: String): Flow<List<MessageEntity>> = flowOf(emptyList())
         override suspend fun upsertMessages(messages: List<MessageEntity>) = unsupported()
         override suspend fun deleteMessages(sessionId: String) = unsupported()
+        override suspend fun deleteMessageIds(sessionId: String, ids: List<String>) = unsupported()
         override suspend fun clearMessages() = unsupported()
         override fun observeCustomModels(): Flow<List<CustomModelEntity>> = flowOf(emptyList())
         override suspend fun customModel(id: String): CustomModelEntity? = null

@@ -37,6 +37,7 @@ import com.freebuff.core.ui.SheetScaffold
 import com.freebuff.core.ui.theme.LocalTokens
 import java.io.File
 import java.util.Locale
+import androidx.compose.ui.res.stringResource
 
 /**
  * 检查更新:真实拉取更新源 JSON(默认本仓库公开的 dist/update.json,发版时自动刷新)。
@@ -90,29 +91,29 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
         installError = launchInstaller(context, ready.file)
     }
 
-    SheetScaffold("检查更新", "当前版本 v" + version) {
+    SheetScaffold(stringResource(R.string.set_update_title), stringResource(R.string.set_update_current_prefix) + version) {
         when (phase) {
             "checking" -> Column {
-                Text("正在检查更新…", color = t.text2, fontSize = 14.sp)
+                Text(stringResource(R.string.set_update_checking), color = t.text2, fontSize = 14.sp)
                 Text(
-                    if (viewModel.updateConfigured) "从更新源 " + viewModel.updateSource + " 拉取版本信息"
-                    else "更新源未配置",
+                    if (viewModel.updateConfigured) stringResource(R.string.set_update_source_prefix) + viewModel.updateSource + stringResource(R.string.set_update_source_suffix)
+                    else stringResource(R.string.set_update_not_configured),
                     color = t.text3, fontSize = 11.5.sp, modifier = Modifier.padding(top = 5.dp),
                 )
             }
 
             "error" -> Column {
-                Text("检查更新失败", color = t.danger, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text(error ?: "未知错误", color = t.text2, fontSize = 12.5.sp,
+                Text(stringResource(R.string.set_update_failed), color = t.danger, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(error ?: stringResource(R.string.set_unknown_error), color = t.text2, fontSize = 12.5.sp,
                     modifier = Modifier.padding(top = 6.dp))
                 Spacer(Modifier.height(20.dp))
-                Text("重试", color = t.accentInk, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                Text(stringResource(R.string.set_retry), color = t.accentInk, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                     modifier = Modifier.clip(RFull).background(t.accent).clickable { attempt++ }
                         .padding(horizontal = 26.dp, vertical = 11.dp))
                 Text(
                     if (viewModel.updateConfigured)
-                        "请确认网络可达、更新源地址正确(当前 " + viewModel.updateSource + ")"
-                    else "未配置更新源:设 freebuff.updateUrl(android/local.properties)或 FREEBUFF_UPDATE_URL",
+                        stringResource(R.string.set_update_net_hint_prefix) + viewModel.updateSource + ")"
+                    else stringResource(R.string.set_update_no_source),
                     color = t.text3, fontSize = 10.5.sp, modifier = Modifier.padding(top = 8.dp),
                 )
             }
@@ -122,8 +123,8 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
                 val downloadUrl = rv?.url.orEmpty()
                 val canInline = rv != null && rv.canDownloadInApp
                 Column {
-                    Text("有新版本可用", color = t.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-                    Text("最新版本 v" + (rv?.version ?: "") + ",你当前是 v" + version,
+                    Text(stringResource(R.string.set_update_available), color = t.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.set_update_latest_prefix) + (rv?.version ?: "") + stringResource(R.string.set_update_you_have_prefix) + version,
                         color = t.text2, fontSize = 12.5.sp, modifier = Modifier.padding(top = 6.dp))
 
                     // 一句话摘要:先让人知道这次值不值得更新,再展开明细
@@ -136,7 +137,7 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
                     val notes = rv?.notes.orEmpty()
                     if (notes.isNotEmpty()) {
                         Spacer(Modifier.height(14.dp))
-                        Text("更新内容 · " + notes.size + " 项", color = t.text3, fontSize = 11.5.sp,
+                        Text(stringResource(R.string.set_update_notes_prefix) + notes.size + stringResource(R.string.set_snapshot_filter_suffix), color = t.text3, fontSize = 11.5.sp,
                             fontWeight = FontWeight.Medium)
                         notes.forEach { i ->
                             Text("• " + i, color = t.text2, fontSize = 12.sp,
@@ -150,9 +151,9 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
                         is UpdateDownload.Running -> Column {
                             Text(
                                 if (dl.total > 0)
-                                    "正在下载 " + percent(dl.received, dl.total) + "%(" +
+                                    stringResource(R.string.set_update_downloading_prefix) + percent(dl.received, dl.total) + "%(" +
                                         sizeText(dl.received) + " / " + sizeText(dl.total) + ")"
-                                else "正在下载 " + sizeText(dl.received),
+                                else stringResource(R.string.set_update_downloading_prefix) + sizeText(dl.received),
                                 color = t.text2, fontSize = 12.5.sp,
                             )
                             Spacer(Modifier.height(10.dp))
@@ -170,19 +171,19 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
                                 }
                             }
                             Spacer(Modifier.height(16.dp))
-                            Text("取消", color = t.text2, fontSize = 12.5.sp,
+                            Text(stringResource(R.string.set_cancel), color = t.text2, fontSize = 12.5.sp,
                                 modifier = Modifier.clip(RFull).background(t.surface3)
                                     .clickable { viewModel.resetUpdateDownload() }
                                     .padding(horizontal = 22.dp, vertical = 10.dp))
                         }
 
                         is UpdateDownload.Ready -> Column {
-                            Text("安装包已下载并通过校验 ✓", color = t.ok, fontSize = 13.sp,
+                            Text(stringResource(R.string.set_update_verified), color = t.ok, fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold)
                             Text(dl.file.name + " · " + sizeText(dl.file.length()), color = t.text3,
                                 fontSize = 11.sp, modifier = Modifier.padding(top = 6.dp))
                             Spacer(Modifier.height(16.dp))
-                            Text("立即安装", color = t.accentInk, fontSize = 13.sp,
+                            Text(stringResource(R.string.set_update_install_now), color = t.accentInk, fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clip(RFull).background(t.accent)
                                     .clickable { installError = launchInstaller(context, dl.file) }
@@ -190,12 +191,12 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
                         }
 
                         is UpdateDownload.Failed -> Column {
-                            Text("更新包下载失败", color = t.danger, fontSize = 15.sp,
+                            Text(stringResource(R.string.set_update_download_failed), color = t.danger, fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold)
                             Text(dl.message, color = t.text2, fontSize = 12.5.sp,
                                 modifier = Modifier.padding(top = 6.dp))
                             Spacer(Modifier.height(18.dp))
-                            Text("重试", color = t.accentInk, fontSize = 13.sp,
+                            Text(stringResource(R.string.set_retry), color = t.accentInk, fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.clip(RFull).background(t.accent)
                                     .clickable { rv?.let { viewModel.startUpdateDownload(it) } }
@@ -205,7 +206,7 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
                         UpdateDownload.Idle -> Column {
                             if (canInline && rv != null) {
                                 Text(
-                                    "下载并安装" + if (rv.apkSize > 0) "(" + sizeText(rv.apkSize) + ")" else "",
+                                    stringResource(R.string.set_update_download_install) + if (rv.apkSize > 0) "(" + sizeText(rv.apkSize) + ")" else "",
                                     color = t.accentInk, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                                     modifier = Modifier.clip(RFull).background(t.accent).clickable {
                                         if (canInstallUnknownApps(context)) {
@@ -217,19 +218,19 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
                                         }
                                     }.padding(horizontal = 26.dp, vertical = 11.dp),
                                 )
-                                Text("下载后自动校验完整性,校验不通过不会交给安装器", color = t.text3,
+                                Text(stringResource(R.string.set_update_verify_note), color = t.text3,
                                     fontSize = 10.5.sp, modifier = Modifier.padding(top = 8.dp))
                             }
                             if (downloadUrl.isNotBlank()) {
                                 Spacer(Modifier.height(14.dp))
-                                Text("前往下载", color = t.text2, fontSize = 12.5.sp,
+                                Text(stringResource(R.string.set_update_go_download), color = t.text2, fontSize = 12.5.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.clip(RFull).background(t.surface3).clickable {
                                         uriHandler.openUri(downloadUrl)
                                     }.padding(horizontal = 26.dp, vertical = 11.dp))
                                 Text(
-                                    if (canInline) "也可以自行下载安装包,安装后版本号随包更新"
-                                    else "更新源未提供直链:请到发布页手动下载安装",
+                                    if (canInline) stringResource(R.string.set_update_manual_note)
+                                    else stringResource(R.string.set_update_no_direct),
                                     color = t.text3, fontSize = 10.5.sp, modifier = Modifier.padding(top = 8.dp),
                                 )
                             }
@@ -238,7 +239,7 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
 
                     if (needPermission) {
                         Spacer(Modifier.height(14.dp))
-                        Text("请先允许「安装未知应用」,再回到这里点下载并安装", color = t.danger,
+                        Text(stringResource(R.string.set_update_allow_install), color = t.danger,
                             fontSize = 11.sp)
                     }
                     installError?.let {
@@ -249,10 +250,10 @@ fun UpdateSheet(viewModel: SettingsViewModel = hiltViewModel()) {
             }
 
             else -> Column {
-                Text("已是最新版本 ✓", color = t.ok, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Text("当前 v" + version + " 已是最新", color = t.text2, fontSize = 12.5.sp,
+                Text(stringResource(R.string.set_update_up_to_date), color = t.ok, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.set_update_current_prefix) + version + stringResource(R.string.set_update_latest_suffix), color = t.text2, fontSize = 12.5.sp,
                     modifier = Modifier.padding(top = 6.dp))
-                Text("更新源 " + viewModel.updateSource, color = t.text3, fontSize = 10.5.sp,
+                Text(stringResource(R.string.set_update_source_label_prefix) + viewModel.updateSource, color = t.text3, fontSize = 10.5.sp,
                     modifier = Modifier.padding(top = 8.dp))
             }
         }
@@ -301,5 +302,6 @@ private fun launchInstaller(context: Context, file: File): String? = try {
     )
     null
 } catch (t: Throwable) {
-    "无法拉起系统安装程序,请手动打开:" + file.absolutePath
+    // 这里是普通函数(非 @Composable),取文案要走 Context
+    context.getString(R.string.set_update_open_installer_failed) + file.absolutePath
 }

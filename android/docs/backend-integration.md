@@ -155,7 +155,38 @@ sealed interface ApiResult<out T> {
 注意:`verify/flow.py` 的 `type` 走 `adb shell input text`,几十个字符以上会被吞尾巴(实测 57 字符只落地 40);
 输入长文本要用 `verify/ime.py`(AdbKeyboard `commitText`,不过键盘输入通道,字节完整)。
 
-#### 3.3.5 工具错误注入与「说明书」(给弱模型的契约)
+#### 3.3.5 工具注册表、错误注入与「说明书」(给弱模型的契约)
+
+**注册表就是唯一真相**(`core:model/Tools.kt`):每个工具的定义 / 权限默认 / 执行归属 / 展示标签 /
+能力标签写在**同一个 `AgentTool`** 里,权限表、展示名、能力裁剪、执行分派全部从它派生 ——
+过去「加一个工具要改 5 处(定义 / 权限默认 / 分派 / 标签 / 卡片)」,漏任何一处都是**静默缺陷**
+(模型能用但没标签、或写了却永远弹确认)。现在这条链不可能再分叉,`ToolRegistryTest` 断言它。
+
+| 工具 | 权限默认 | 执行 | 能力 | 说明 |
+|---|---|---|---|---|
+| `web_search` | ALLOW | DATA | — | 免钥联网搜索(DuckDuckGo IA) |
+| `web_fetch` | ALLOW | DATA | — | 抓指定网址正文,截断 4000 字 |
+| `github_search_repositories` | ALLOW | DATA | — | 搜公开仓库 |
+| `github_get_file` | ALLOW | DATA | — | 读仓库内文件;**已连接账号走 contents API(可读私有仓库)**,未连接回落 raw 匿名通道 |
+| `github_get_readme` | ALLOW | DATA | — | 读 README(内部复用 `github_get_file`) |
+| `github_list_branches` | ALLOW | DATA | — | 列分支(名称 + 头提交);写流程的前置查询 |
+| `github_create_branch` | CONFIRM | DATA | WRITE | 从 `from`(缺省默认分支)建分支 |
+| `github_commit_files` | CONFIRM | DATA | WRITE | **多文件一次原子提交**(blobs → tree → commit → 更新 ref) |
+| `github_create_pull_request` | CONFIRM | DATA | WRITE | 从 head 到 base 开 PR,回 PR 链接 |
+| `calculator` | ALLOW | DATA | — | 四则运算(递归下降,不用 eval) |
+| `current_time` | ALLOW | DATA | — | 设备当前日期时间 |
+| `save_memory` | CONFIRM | HOST | MEMORY | 写核心记忆块 |
+| `memory_recall` | ALLOW | HOST | MEMORY | 检索历史记忆 |
+| `spawn_subagent` | ALLOW | HOST | — | 派只读子代理(见 §3.3.7) |
+| `task_completed` | ALLOW | DATA | — | 循环收工信号 |
+
+**单一执行入口**:`ToolExecutors.execute(call, tools, attempt, host)` 是全应用唯一的分派点,按注册表的
+`route` 分流 —— `DATA` 工具走内部**分派表**(`dispatchedTools` 与注册表的 DATA 集合在 `ToolExecutorsTest`
+里断言**全等**,漏写一个 case 立刻红),`HOST` 工具回调 `ToolHost`(由 `ChatViewModel` 实现:
+在实现处闭包捕获仓库、会话 id、Context 与 UI 回调)。未知工具信封用的也是同一份「当前可用清单」。
+
+**能力裁剪**是纯函数 `DefaultTools.forCapabilities(memory, planMode)`:关「上下文记忆」→ 记忆工具
+对模型不可见;开「计划模式」→ **写工具物理剔除**(§3.3.11)。裁剪的是「模型根本看不到」,不是提示词约束。
 
 工具报错是模型唯一的纠错信号。这里的做法可以概括成三句话:**说明书要写全,参数先体检,报错给处方**。
 
@@ -217,7 +248,8 @@ task_completed)豁免:它们是循环唯一的出口,熔断它们反而会锁死
 真机实测(2026-09-26,`case argerr`):模型带一个自造参数 `mode` 调 `calculator` → 端上回信封
 `[工具错误] 类型=参数名不存在/UNKNOWN_PARAM · 工具=calculator / 问题: 参数名 mode 不存在…` →
 mock 断言「信封有处方」PASS → 改对的调用算出 `6*7 = 42` →「按建议改对后执行成功」PASS。
-说明书体积:带工具的轮次每轮注入 **5095 字符**(11 个工具,含示例/枚举/默认值;mock 日志 `tools_chars=`),
+说明书体积:带工具的轮次每轮注入 **8293 字符**(15 个工具,含示例/枚举/默认值;mock 日志 `tools_chars=`;
+`ToolsTest` 里的体积预算是 12000 字符,新增工具后仍在预算内),
 系统提示里的「工具使用约定」约 150 字符(`system_chars` 561 → 683)。
 注意:加字段只加 JSON Schema 的常规关键字(enum/minimum/maximum/default),**不开 `strict` 模式** ——
 严格端点对未知模式标志会 400;实测真实网关(OpenAI 兼容)接受这套 schema 并正确调工具。
@@ -265,7 +297,131 @@ mock 的 chunked **永不结束流**(收下请求只写分块、不发终止块)
 - `progress` 用 `recheck.py` 盯库复验 PASS:正文为三段进度播报,logcat 里 `nudge #1 → round 3 → op finish rounds=3`,
   即「动过工具后只回文本」被提醒续跑,而不是当成答完。
 
-### 3.4 自定义模型(CustomModelRepository)
+##### 3.3.7 端侧子代理(spawn_subagent)
+
+`spawn_subagent` 是**端上自己执行**的编排工具(不是转发给后端):主模型派一个只读子代理,子代理用
+**独立上下文 + 只读白名单**跑自己的 LLM 循环,结论压缩后作为本轮普通 `tool_result` 回填主循环。
+
+| 环节 | 行为 |
+|---|---|
+| 参数 | `Subagent.parseRequest`;`agent_type` ∈ researcher/code_reader/analyst,`task` 非空;不合法回 `[工具错误]` 信封不执行 |
+| 白名单 | 按类型取只读工具集,再按权限层过滤:**只把 `allow` 级交给子代理**(`confirm` 在子代理内等同 deny,连清单都不给) |
+| 越权 | 调清单外的名字(含幻觉工具、`spawn_subagent` 自己)→ 不执行,回 `UNKNOWN_TOOL` 信封 + 可用工具清单 |
+| 边界 | 工具轮数 ≤3,用尽后**去掉 `tools` 再要一次**逼收敛;总时限 120s;空闲看门狗 60s;瞬时失败最多重试 1 次(仅当本轮尚无输出) |
+| 回填 | `[子代理 <type> 完成 · N 轮工具 · <用过的工具>]` + 结论,经 `ContextPolicy.compressToolResult` 压缩后进协议消息 |
+| 失败 | 回可行的替代路径(改用 web_search / web_fetch / github_get_* 或直接告知用户),不让主循环原地重派 |
+| 展示 | 对话流的工具卡片就地换成子代理形态(`subagent:<type>`),运行中显示实时尾部,收尾后展开区是最终输出 |
+
+细节与阶段规划见 **[subagent-design.md](subagent-design.md)**(§12 是已落地部分的实际行为)。
+
+#### 3.3.8 长任务保活与完成通知
+
+多轮 agent 任务(流式 + 工具循环)动辄几十秒到几分钟。没有前台服务时,用户切走或锁屏后进程会被
+系统冻结/回收,回复断在半截,只能靠冷启动的「半成品修复」兜底(见 §3.3.4)。
+
+现在:一次对话操作开始时启动前台服务(`AgentForegroundService`,清单里声明 `dataSync` 类型),
+运行中挂一条**低优先级、静音**的常驻通知(标题 = 会话名,正文 = 当前进度,如「第 2 轮 · 调用 web_search」);
+结束时撤下常驻通知,并按情形发一条**可点回 App** 的完成通知:
+
+| 情形 | 常驻通知 | 完成通知 |
+|---|---|---|
+| 正常跑完 | 撤下 | 「回复已完成」+ 会话名 · 回复首行 |
+| 失败(端点错误/超时/空回复) | 撤下 | 「本轮没有完成」+ 归因文案 |
+| 用户按「停止」 | 撤下 | 不发(用户就在眼前,再弹是噪声) |
+| 没有可用模型 | 不启动 | 不发(压根没开始跑) |
+
+分层:接口 `core:ui platform/AgentTaskNotifier`(feature 层注入,与 `AppNavigator` 同款模式)→
+实现 `:app` 的 `AgentTaskNotifierImpl`(发 intent)+ `AgentForegroundService`(前台状态与通知组装);
+**通知文案是 `core:model.AgentNotify` 的纯函数**,长度/首行/回落规则都在 JVM 单测里(AgentNotifyTest)。
+
+两个必须知道的约束:
+
+- **后台启动前台服务在 Android 12+ 会被拒**(`ForegroundServiceStartNotAllowedException`):
+  所以只在「用户刚点发送」的可见上下文启动;实现侧吞掉异常并降级 —— 任务照常跑完,只是失去保活。
+- **通知权限**(API 33+ 的 `POST_NOTIFICATIONS`)被拒**不影响功能**:无通知权限时前台服务依然合法,
+  只是通知不可见。App 启动时请求一次,被拒不阻断(见 `MainActivity`)。
+
+已知边界:上滑清掉任务卡片会销毁 Activity/ViewModel,正在跑的那一轮随之取消(消息由冷启动修复兜底)。
+要跨「清任务」继续跑,得把循环搬进服务内 —— 未做。
+
+#### 3.3.9 消息级操作(重新生成 / 编辑重发 / 单条删除)
+
+三条入口都作用于**消息列表**,所以规则提成 `core:model` 的纯函数 `MessageOps`(只读 id 与角色,
+不碰 Room/Compose),`ChatViewModel` 只负责把它的 `Plan` 落到仓库。三条入口与「发送」共用同一个循环实现
+(`CoroutineScope.launchAgentOp`)—— 三份循环各自演化,轮次上限/提醒/熔断这些踩坑才定下来的策略迟早会走偏。
+
+| 操作 | 规则 | 为什么 |
+|---|---|---|
+| 重新生成 | 只对**最后一条** agent 回复开放:删掉它、补一条占位回复重跑,用户消息与更早历史原样保留。中间的回复后面压着用户的追问(问的是旧回答),重跑会让上下文自相矛盾 —— 要改中间那条,正确做法是编辑那条用户消息重发 |
+| 编辑重发 | 改写这条用户消息(trim),**丢弃它之后的全部消息**,再跑一轮 | 后续回复与工具执行都是针对旧问题产生的,留着等于让模型看到「新问题 + 旧答案」 |
+| 单条删除 | 精确删这一条,**不**连带它的回复 | 用户点的是某一条消息;连带清理会删掉他没想到的东西。UI 删前二次确认(单条删除没有像会话删除那样的撤销条位置) |
+
+界面:每条消息一行操作(复制 / 编辑 / 删除),最后一条回复多一个「重新生成」;编辑在气泡内就地改写,
+并在气泡下方明示「重发会丢弃这条之后的消息(N 条)」。生成中三个操作一律不开放(会被流式写入覆盖回去,白删一次),
+按钮同步变灰而不是点了没反应。
+
+落库时要处理的两个坑(均已修,有单测):
+
+- **追加取号要用「最大序号 + 1」而不是「消息条数」**:单条删除会留下序号空洞,按条数取号会与既有行撞号 ——
+  两条消息同 `sort` 时会话内顺序不再确定(Room 按 sort 排序,同值由存储引擎决定),历史可能显示错乱。规则见 `MessageOps.nextSort`。
+- **改动历史必须作废早期上下文摘要缓存**(`summaryCache`):它的复用判定只看「覆盖条数」,
+  删掉消息后仍会被判为有效,下一轮就会把一份描述着已被删消息的摘要注入上下文。
+
+消息被改写/删除后重算会话预览(`SessionRepository.refreshPreview`,取文规则与发送时一致),
+避免列表页预览指着一段已经不存在的正文。
+
+已知边界:删除是**单条**语义,不提供撤销(仅会话删除有撤销条);删掉用户消息会留下它那条孤立的回复,
+这是「精确到条」的代价,要清理连回复一起删即可。
+
+#### 3.3.10 GitHub 写路径(分支 → 提交 → PR)
+
+四个写/读工具全部打 **`api.github.com`**(主机固定,不接受模型给的 host),`Authorization: Bearer <token>`
+由执行层从 Keystore 加密存储里取出后注入 —— **token 只出现在请求头,不进日志、不进错误信封、不进任何 UI 文本**。
+`github_get_file` 也已补鉴权分支:已连接账号走 `contents` API(可读私有仓库),未连接才回落 raw 匿名通道。
+
+| 步骤 | 端点 | 说明 |
+|---|---|---|
+| 列分支 | `GET /repos/{owner}/{repo}/branches?per_page=N` | 匿名也可读公开仓库;已连接账号带 Bearer |
+| 取默认分支 | `GET /repos/{owner}/{repo}` | `github_create_branch` 缺省 `from` 时用;`github_commit_files` 用它做「不直推默认分支」判定 |
+| 取分支头提交 | `GET /repos/{owner}/{repo}/branches/{branch}` | 分支名里的 `/` 保留为路径分隔符,其余逐段转义 |
+| 建分支 | `POST /repos/{owner}/{repo}/git/refs` | `{ref: refs/heads/<branch>, sha: <起点 sha>}` |
+| 提交(多文件) | `GET /git/commits/{head}` → `POST /git/blobs` ×N → `POST /git/trees`(带 `base_tree`) → `POST /git/commits` → `PATCH /git/refs/heads/{branch}` | **一次调用 = 一个 commit**:`base_tree` 挂在分支原头的 tree 上(增量改,不丢未提及的文件),`parents` 指向原头提交,更新 ref 时 `force=false`(绝不做强推) |
+| 开 PR | `POST /repos/{owner}/{repo}/pulls` | `{head, base, title, body, draft}`;head 上必须已有提交,否则 GitHub 回「没有差异」 |
+
+**端上先判安全边界**(不靠提示词自觉,判出来才能给带处方的信封):
+
+- 写操作一律要求显式 `owner`/`repo`/`branch`(或 PR 的 `head`/`base`),不接受省略;
+- **不直推默认分支**:`github_commit_files` 的目标分支等于仓库默认分支时直接拒绝,让它先建分支;
+- 分支名与路径走 `GitRef`(`git check-ref-format` 的可移植子集 + 仓库内相对路径规则):空、控制字符、
+  空格、`~ ^ : ? * [ \`、`..`、`@{`、首尾 `/`、`//`、结尾 `.`/`.lock`、以 `-` 开头、`..` 逃逸、绝对路径
+  全部在发请求前拦住;
+- **破坏性能力不进工具集**:没有强推、没有删分支、没有递归删除。
+
+失败处方对上 GitHub 的真实语义(客户端与服务端的两种错都覆盖):
+
+| 状态码 | `Kind` | 处方 |
+|---|---|---|
+| 401 / 403 | `AUTH` | 写工具特意换文案:通常是还没连 Git 账号或授权失效 → 让用户到「设置 → 集成 → Git 账号」;没有授权的仓库只能读不能写 |
+| 404 | `NOT_FOUND` | 仓库 / 分支 / path 不存在,或私有仓库无权限 → 先核对名字(`github_list_branches` / `github_search_repositories` 可查) |
+| 409 | `CONFLICT` | 期间被推了新提交(非 fast-forward),或目标已存在 → 重新拉取最新现状后再试,**不要强推** |
+| 422 | `BAD_VALUE` | GitHub 判定请求内容不合法(常见:分支名非法、分支已存在、没有差异)→ 按提示改参数 |
+| 429 | `RATE_LIMIT` | 被限流 → 等一会儿,或减少调用次数(**不要连续重试**) |
+
+409/422 单独给处方的原因:不给的话它们会落到 `else` 的 `INTERNAL`(「换其它工具」),对写操作是错误的方向 ——
+这两个错的正确动作都是「重新拉现状 / 改参数」。
+
+#### 3.3.11 计划模式(权限由工具集强制)
+
+设置页的「计划模式」开关(默认关)开启后,`DefaultTools.forCapabilities(memory, planMode=true)` 会
+**物理剔除**三个 `WRITE` 工具 —— 模型看不到写入口,就不可能写出提交;与后端 agent 运行时的 plan 模式同构。
+
+- 模型若仍按记忆去调写工具:它不在「当前可用清单」里,`dispatchTool` 的未知工具闸门直接回
+  `UNKNOWN_TOOL` 信封 + 近邻建议(如 `github_commit_files` → `github_get_file`/`github_search_repositories`)
+  + 完整可用清单(`ToolRegistryTest` 断言);**不会弹确认框、也不会执行**;
+- 对话页顶部有一条状态条(标题 + 一句话说明 + **退出**入口),用户看完计划能当场切回来;
+- `github_list_branches` 是读操作,计划模式下仍然可用(调研阶段需要它)。
+
+
 
 - 测试连接:最小 body `POST` 校验连通与鉴权 → `ProbeResult.Success(ms)` / `Fail(reason, code)`。
 - 模型快照:`GET {origin}/v1/models`;连接正常但快照刷新失败时保留旧快照,并以 `ProbeResult.Success.note` 提示原因。
@@ -318,4 +474,17 @@ mock 的 chunked **永不结束流**(收下请求只写分块、不发终止块)
 - `GithubApiTest`:设备码申请(表单字段)、`pending`/`slow_down`/`granted`/`denied`、`/user`、`/user/repos` 映射(含私有仓库描述回退)、401 分类
 - `ModelCatalogRepositoryTest`:初始内置、未配置不请求、成功替换、失败回退并记录错误、自动刷新仅一次
 - `UpdateRepositoryTest`:解析、未配置、5xx、非 JSON、缺 version
-- `core:model`: `CatalogTest`(id 映射/去重/美化/徽标)、`UrlsTest.modelsUrl`
+- `SubagentRunnerTest`:子代理循环的请求契约(系统剧本+任务、白名单随权限降级)、一轮工具往返与结果回填、
+  越权调用回信封、轮数用尽后去 tools 强制收敛、确定性失败不重试 / 瞬时失败重试一次、空结论给归因、未配置不发请求
+  (全程用 `analyst` 的 calculator:纯本地解析,不产生外网请求)
+- `GithubWriteApiTest`:列分支 / 建分支 / 提交 / 开 PR 的请求形状与响应解析 —— 其中「一次多文件是**一个** commit」
+  被断言死(7 次请求:读头 → 读 tree → 2 个 blob → 新 tree(带 `base_tree`) → 新 commit(`parents` 指向原头) →
+  更新 ref(`force=false`));已授权读文件走 `contents` API + raw Accept 头;**401/403/404/409/422/429 与成功路径**
+  都在 MockWebServer 上跑
+- `ToolExecutorsTest`:本地工具真实执行、别名救回、自造参数被拦、多问题合并信封、连续失败升级、
+  **注册表 DATA 集合与分派表全等**、HOST 工具回调 `ToolHost`(没宿主时回未知工具信封)
+- `core:model` 另有 `ToolRegistryTest`(标签/权限默认/能力裁剪都从注册表派生、计划模式剔除写工具、
+  写工具走未知工具路径给近邻建议)、`GitRefTest`(分支名与路径合法性逐条给原因)、
+  `ToolErrorsTest`(信封形状 / 六种 HTTP 处方 / 近邻建议)、`ToolPermissionsTest`(默认分级与编解码)
+- `core:model`: `CatalogTest`(id 映射/去重/美化/徽标)、`UrlsTest.modelsUrl`、
+  `SubagentTest`(参数解析/白名单只读且不含编排工具/剧本约束/结论与失败的回填格式)

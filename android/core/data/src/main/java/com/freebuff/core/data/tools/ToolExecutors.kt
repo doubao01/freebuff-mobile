@@ -1,14 +1,20 @@
 package com.freebuff.core.data.tools
 
 import com.freebuff.core.data.network.ApiError
+import com.freebuff.core.data.network.ApiResult
 import com.freebuff.core.data.network.FreebuffApi
+import com.freebuff.core.data.network.GithubApi
+import com.freebuff.core.data.repository.GitTokenProvider
 import com.freebuff.core.model.AgentLoop
 import com.freebuff.core.model.AgentTool
 import com.freebuff.core.model.DefaultTools
+import com.freebuff.core.model.GitRef
 import com.freebuff.core.model.JsonArgs
 import com.freebuff.core.model.ToolCallReq
 import com.freebuff.core.model.ToolErrors
+import com.freebuff.core.model.ToolHost
 import com.freebuff.core.model.ToolOutcome
+import com.freebuff.core.model.ToolRoute
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -29,8 +35,43 @@ import javax.inject.Singleton
 @Singleton
 class ToolExecutors @Inject constructor(
     private val client: OkHttpClient,
+    /** 已授权 Git token(写工具带鉴权)。未连接时为空串 —— 写工具会回「先连接 Git 账号」。 */
+    private val tokens: GitTokenProvider = GitTokenProvider { "" },
+    /** GitHub REST 客户端(写路径复用它的 base 与鉴权信封,单测可指向 MockWebServer)。 */
+    private val github: GithubApi = GithubApi(client),
 ) {
     private val io: CoroutineDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+
+    /** 写工具集合(注册表里声明,这里只取用):鉴权失败时的处方与只读工具不同。 */
+    private val writeTools: Set<String> = DefaultTools.WRITE_TOOLS
+
+    /** 看到这两个码,写工具应先想到「没连账号 / 授权失效」。 */
+    private val authCodes = setOf(401, 403)
+
+    /**
+     * DATA 路由的分派表:工具名 → 实现。
+     *
+     * 用表而不用 `when`,是为了把「注册表里每个 DATA 工具都有真实分派」变成**可断言的不变式**
+     * (见 [dispatchedTools] 与 ToolExecutorsTest):过去漏写一个 case,调用会静默落进「未知工具」
+     * 分支 —— 工具在说明书里存在、模型也能调,却永远执行不了。
+     */
+    private val dispatch: Map<String, suspend (String) -> ToolOutcome> = mapOf(
+        "web_search" to { args -> webSearch(args) },
+        "web_fetch" to { args -> webFetch(args) },
+        "github_search_repositories" to { args -> ghSearchRepos(args) },
+        "github_get_file" to { args -> ghGetFile(args) },
+        "github_get_readme" to { args -> ghGetReadme(args) },
+        "github_list_branches" to { args -> ghListBranches(args) },
+        "github_create_branch" to { args -> ghCreateBranch(args) },
+        "github_commit_files" to { args -> ghCommitFiles(args) },
+        "github_create_pull_request" to { args -> ghCreatePullRequest(args) },
+        "calculator" to { args -> calculator(args) },
+        "current_time" to { ToolOutcome(currentTime()) },
+        AgentLoop.COMPLETION_TOOL to { args -> completion(args) },
+    )
+
+    /** 已实现真实分派的工具名(DATA 路由覆盖度自检用)。 */
+    val dispatchedTools: Set<String> get() = dispatch.keys
 
     /**
      * 单次执行入口。
@@ -46,11 +87,13 @@ class ToolExecutors @Inject constructor(
      *
      * @param tools 当前会话可用工具集(记忆关闭时不含记忆工具),未知名字的提示据此生成
      * @param attempt 同一工具在本轮会话里连续第几次失败(≥2 时信封劝「换路」而不是重试)
+     * @param host HOST 路由工具的执行回调(记忆 / 子代理需要仓库、会话与 UI);不传则 HOST 工具回未知工具信封
      */
     suspend fun execute(
         call: ToolCallReq,
         tools: List<AgentTool> = DefaultTools.ALL,
         attempt: Int = 1,
+        host: ToolHost? = null,
     ): ToolOutcome = withContext(io) {
         val tool = DefaultTools.find(call.name, tools)
             ?: return@withContext ToolOutcome(
@@ -74,18 +117,24 @@ class ToolExecutors @Inject constructor(
             return@withContext ToolOutcome(ToolErrors.forProblems(tool, problems, attempt), isError = true)
         }
         val args = argsObj.toString()
-        val outcome = try {
-            when (call.name) {
-                "web_search" -> webSearch(args)
-                "web_fetch" -> webFetch(args)
-                "github_search_repositories" -> ghSearchRepos(args)
-                "github_get_file" -> ghGetFile(args)
-                "github_get_readme" -> ghGetReadme(args)
-                "calculator" -> calculator(args)
-                "current_time" -> ToolOutcome(currentTime())
-                AgentLoop.COMPLETION_TOOL -> completion(args)
-                else -> ToolOutcome(ToolErrors.unknownTool(call.name, DefaultTools.names(tools)), isError = true)
+        // HOST 路由:交给会话宿主(记忆 / 子代理要仓库、会话与 UI 回调)。
+        // 宿主返回 null 说明它不认识这个工具 —— 回未知工具信封,绝不静默成功。
+        if (tool.route == ToolRoute.HOST) {
+            val hosted = try {
+                host?.executeHostTool(call, attempt)
+            } catch (e: Exception) {
+                errorFor(tool.name, e, attempt)
             }
+            return@withContext hosted
+                ?: ToolOutcome(ToolErrors.unknownTool(call.name, DefaultTools.names(tools)), isError = true)
+        }
+        // DATA 路由:注册表里有、分派表里没有 = 声明与实现分叉(测试会红,这里兜底不静默)
+        val impl = dispatch[call.name] ?: return@withContext ToolOutcome(
+            ToolErrors.internalError(tool.name, "工具 " + tool.name + " 没有执行实现", attempt),
+            isError = true,
+        )
+        val outcome = try {
+            impl(args)
         } catch (e: Exception) {
             errorFor(tool.name, e, attempt)
         }
@@ -106,13 +155,28 @@ class ToolExecutors @Inject constructor(
         // 工具特有的下一步建议:通用处方之外再给一条「怎么找对目标」
         val hint = when (tool) {
             "github_get_file", "github_get_readme" ->
-                "先核对 owner/repo/path:可用 github_search_repositories 搜到正确仓库名"
+                "先核对 owner/repo/path:可用 github_search_repositories 搜到正确仓库名与路径"
+            "github_list_branches", "github_create_branch", "github_commit_files" ->
+                "先核对 owner/repo 与分支名:github_list_branches 能列出真实存在的分支"
+            "github_create_pull_request" ->
+                "先确认 head 分支上已有提交,且 base 分支名正确(github_list_branches 可查)"
             "web_fetch" -> "链接可能已失效或站点拒绝抓取:换一个来源,或先用 web_search 找新链接"
             "github_search_repositories" -> "搜索接口不可用时可改用 web_search 查该项目主页"
             else -> ""
         }
         val envelope = when (e) {
-            is ApiError.Http -> ToolErrors.http(tool, e.code, e.body.take(160), attempt, hint)
+            is ApiError.Http -> if (tool in writeTools && e.code in authCodes) {
+                // 写工具撞鉴权:99% 是没连账号或 token 失效 —— 直接说这一步要用户配合,
+                // 而不是回一句「HTTP 403」让模型自己猜(它猜不出来,只会重试)
+                ToolErrors.report(
+                    ToolErrors.Kind.AUTH, tool,
+                    "GitHub 拒绝了这次写操作(HTTP " + e.code + "),通常是还没连接 Git 账号或授权已失效",
+                    "让用户到「设置 → 集成 → Git 账号」完成授权后再试;没有授权的仓库只能读不能写",
+                    attempt, hint,
+                )
+            } else {
+                ToolErrors.http(tool, e.code, e.body.take(160), attempt, hint)
+            }
             is ApiError.Timeout -> ToolErrors.report(
                 ToolErrors.Kind.NETWORK, tool, "请求超时",
                 "等一会儿重试一次;仍超时就换其它来源或直接告诉用户没取到", attempt,
@@ -241,7 +305,7 @@ class ToolExecutors @Inject constructor(
         }
     }
 
-    private fun ghGetFile(argsJson: String): ToolOutcome {
+    private suspend fun ghGetFile(argsJson: String): ToolOutcome {
         val a = JSONObject(argsJson)
         val owner = a.optString("owner").trim()
         val repo = a.optString("repo").trim()
@@ -259,6 +323,11 @@ class ToolExecutors @Inject constructor(
             )
         }
         val ref = a.optString("ref").trim()
+        // 已连接 Git 账号:走带鉴权的 contents API —— 私有仓库与 raw 匿名通道读不到
+        val token = tokens.token()
+        if (token.isNotBlank()) {
+            return ToolOutcome(github.fileContent(token, owner, repo, path, ref).orThrow().take(4000))
+        }
         val url = buildString {
             append("https://raw.githubusercontent.com/")
             append(owner).append('/').append(repo).append('/')
@@ -282,7 +351,7 @@ class ToolExecutors @Inject constructor(
         }
     }
 
-    private fun ghGetReadme(argsJson: String): ToolOutcome {
+    private suspend fun ghGetReadme(argsJson: String): ToolOutcome {
         val a = JSONObject(argsJson)
         val owner = a.optString("owner").trim()
         val repo = a.optString("repo").trim()
@@ -290,6 +359,170 @@ class ToolExecutors @Inject constructor(
         return ghGetFile(
             JSONObject().put("owner", owner).put("repo", repo).put("path", "README.md").toString(),
         )
+    }
+
+    /* ---------------- GitHub 写路径(需要已授权的 repo scope) ---------------- */
+
+    /**
+     * 列分支:公开仓库匿名可读,已连接账号时可读私有仓库 —— 所以**不要求 token**。
+     * 它是写流程的前置查询(先从哪拉、往哪提交),计划模式下也保留可用。
+     */
+    private suspend fun ghListBranches(argsJson: String): ToolOutcome {
+        val a = JSONObject(argsJson)
+        val owner = a.optString("owner").trim()
+        val repo = a.optString("repo").trim()
+        if (owner.isBlank() || repo.isBlank()) return missing("github_list_branches", "owner/repo")
+        val limit = a.optInt("limit", 30)
+        val branches = github.listBranches(tokens.token(), owner, repo, limit).orThrow()
+        if (branches.isEmpty()) return ToolOutcome("仓库 " + owner + "/" + repo + " 没有任何分支(或不可访问)。")
+        val sb = StringBuilder(owner).append('/').append(repo).append(" 的分支:" + branches.size + " 个\n")
+        branches.forEach { sb.append("- ").append(it.name).append(" @").append(it.sha.take(7)).append("\n") }
+        return ToolOutcome(sb.toString().trim())
+    }
+
+    /** 新建分支:from 缺省用仓库默认分支;起点的 sha 先查出来,不猜。 */
+    private suspend fun ghCreateBranch(argsJson: String): ToolOutcome {
+        val a = JSONObject(argsJson)
+        val owner = a.optString("owner").trim()
+        val repo = a.optString("repo").trim()
+        val branch = a.optString("branch").trim()
+        if (owner.isBlank() || repo.isBlank() || branch.isBlank()) {
+            return missing("github_create_branch", "owner/repo/branch")
+        }
+        GitRef.branchProblem(branch)?.let { p ->
+            return badValue("github_create_branch", "新分支名「" + branch + "」" + p, "换一个合法分支名,如 agent/fix-typo")
+        }
+        gitTokenOrNull("github_create_branch")?.let { return it }
+        val token = tokens.token()
+        val from = a.optString("from").trim().ifBlank { github.defaultBranch(token, owner, repo).orThrow() }
+        GitRef.branchProblem(from)?.let { p ->
+            return badValue("github_create_branch", "起点分支「" + from + "」" + p, "from 要用仓库里真实存在的分支名(github_list_branches 可查)")
+        }
+        val sha = github.branchSha(token, owner, repo, from).orThrow()
+        github.createBranch(token, owner, repo, branch, sha).orThrow()
+        return ToolOutcome(
+            "已从 " + from + " 新建分支 " + branch + "(" + owner + "/" + repo + ",起点 " + sha.take(7) + ")。" +
+                "下一步用 github_commit_files 往这个分支提交。",
+        )
+    }
+
+    /**
+     * 多文件原子提交。
+     *
+     * 两条安全边界在此强制(不靠提示词自觉):
+     * 1. **不直推默认分支** —— 目标分支就是仓库默认分支时直接拒绝,让它先建分支;
+     * 2. **路径不许逃出仓库**([GitRef.pathProblem],端上先判,不用等 GitHub 回 404)。
+     */
+    private suspend fun ghCommitFiles(argsJson: String): ToolOutcome {
+        val a = JSONObject(argsJson)
+        val owner = a.optString("owner").trim()
+        val repo = a.optString("repo").trim()
+        val branch = a.optString("branch").trim()
+        val message = a.optString("message").trim()
+        if (owner.isBlank() || repo.isBlank() || branch.isBlank() || message.isBlank()) {
+            return missing("github_commit_files", "owner/repo/branch/message")
+        }
+        GitRef.branchProblem(branch)?.let { p ->
+            return badValue("github_commit_files", "目标分支名「" + branch + "」" + p, "用 github_list_branches 里的真实分支名")
+        }
+        val arr = a.optJSONArray("files") ?: return missing("github_commit_files", "files")
+        val edits = mutableListOf<GithubApi.FileEdit>()
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: return badValue(
+                "github_commit_files", "files[" + i + "] 不是对象",
+                "每个元素要写成 {\"path\": \"src/a.kt\", \"content\": \"文件全文\"}",
+            )
+            val path = o.optString("path").trim()
+            val content = o.optString("content")
+            if (path.isBlank() || content.isBlank()) {
+                return badValue(
+                    "github_commit_files", "files[" + i + "] 缺少 path 或 content",
+                    "每个文件都要给仓库内相对路径与完整内容",
+                )
+            }
+            GitRef.pathProblem(path)?.let { p ->
+                return badValue("github_commit_files", "文件路径「" + path + "」" + p, "path 是仓库内的相对路径,如 src/main.kt")
+            }
+            edits += GithubApi.FileEdit(path = path, content = content)
+        }
+        if (edits.isEmpty()) return missing("github_commit_files", "files")
+        gitTokenOrNull("github_commit_files")?.let { return it }
+        val token = tokens.token()
+        // 不直推默认分支:写默认分支会把「可评审的改动」变成「既成事实」。
+        // 默认分支查不到(网络/权限问题)就不阻塞提交 —— 真正的拒绝留给 GitHub 的推送保护。
+        val default = (github.defaultBranch(token, owner, repo) as? ApiResult.Ok)?.data
+        if (default != null && default == branch) {
+            return badValue(
+                "github_commit_files",
+                "目标分支 " + branch + " 是仓库默认分支,端上不允许直接往里提交",
+                "先 github_create_branch 建一个分支,提交后再 github_create_pull_request 开 PR",
+            )
+        }
+        val res = github.commitFiles(token, owner, repo, branch, message, edits).orThrow()
+        val paths = edits.joinToString("、") { it.path }
+        return ToolOutcome(
+            "已提交 " + res.files + " 个文件到 " + owner + "/" + repo + "@" + branch + ":" + paths + "\n" +
+                "提交 " + res.sha.take(7) + (if (res.url.isBlank()) "" else " " + res.url) + "\n" +
+                "下一步可用 github_create_pull_request 开 PR。",
+        )
+    }
+
+    /** 开 PR:head 上必须已有提交,否则 GitHub 会回「没有差异」。 */
+    private suspend fun ghCreatePullRequest(argsJson: String): ToolOutcome {
+        val a = JSONObject(argsJson)
+        val owner = a.optString("owner").trim()
+        val repo = a.optString("repo").trim()
+        val head = a.optString("head").trim()
+        val base = a.optString("base").trim()
+        val title = a.optString("title").trim()
+        if (owner.isBlank() || repo.isBlank() || head.isBlank() || base.isBlank() || title.isBlank()) {
+            return missing("github_create_pull_request", "owner/repo/head/base/title")
+        }
+        GitRef.branchProblem(head)?.let { p ->
+            return badValue("github_create_pull_request", "head 分支名「" + head + "」" + p, "head 是你提交改动所在的分支")
+        }
+        GitRef.branchProblem(base)?.let { p ->
+            return badValue("github_create_pull_request", "base 分支名「" + base + "」" + p, "base 通常是 main 或 master")
+        }
+        gitTokenOrNull("github_create_pull_request")?.let { return it }
+        val token = tokens.token()
+        val pr = github.createPullRequest(
+            token, owner, repo, head, base, title,
+            body = a.optString("body"), draft = a.optBoolean("draft", false),
+        ).orThrow()
+        return ToolOutcome(
+            "已开 PR #" + pr.number + ":" + title + "\n" + pr.url + "\n(" + head + " → " + base + ")",
+        )
+    }
+
+    /** 写操作的共同前置:没连 Git 账号就别往下走(回一张指名去处的处方)。 */
+    private suspend fun gitTokenOrNull(tool: String): ToolOutcome? =
+        if (tokens.token().isBlank()) {
+            ToolOutcome(
+                ToolErrors.report(
+                    ToolErrors.Kind.AUTH, tool,
+                    "还没有连接 Git 账号,写操作无法执行(读公开仓库不受影响)",
+                    "让用户到「设置 → 集成 → Git 账号」完成授权;期间改用只读工具,或直接把要改的内容告诉用户",
+                ),
+                isError = true,
+            )
+        } else {
+            null
+        }
+
+    /** 端上先判出来的取值问题(分支名/路径),比 GitHub 的 422/404 更指向具体怎么改。 */
+    private fun badValue(tool: String, problem: String, fix: String, attempt: Int = 1): ToolOutcome = ToolOutcome(
+        ToolErrors.report(
+            ToolErrors.Kind.BAD_VALUE, tool, problem, fix, attempt,
+            DefaultTools.find(tool)?.example.orEmpty(),
+        ),
+        isError = true,
+    )
+
+    /** [ApiResult] → 值或抛出归一的 [ApiError](上层 [errorFor] 再转成带处方的信封)。 */
+    private fun <T> ApiResult<T>.orThrow(): T = when (this) {
+        is ApiResult.Ok -> data
+        is ApiResult.Err -> throw error
     }
 
     /* ---------------- 本地工具 ---------------- */

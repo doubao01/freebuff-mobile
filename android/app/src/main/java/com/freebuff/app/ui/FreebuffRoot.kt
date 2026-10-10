@@ -42,10 +42,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+// app 模块的 namespace(com.freebuff.mobile)与文件所在的 Kotlin 包不同,必须显式导入 R
+import com.freebuff.mobile.R
 import com.freebuff.app.CrashReporter
 import com.freebuff.app.RootViewModel
 import com.freebuff.core.ui.navigation.AppNavState
@@ -92,7 +98,7 @@ fun FreebuffRoot(navigator: AppNavigator) {
             onCopy = {
                 CrashReporter.readLast(context)?.let { text ->
                     CrashReporter.copyToClipboard(context, text)
-                    navigator.showSnack("崩溃堆栈已复制,可粘贴发给开发者")
+                    navigator.showSnack(context.getString(R.string.crash_stack_copied))
                 }
                 CrashReporter.clear(context)
             },
@@ -246,20 +252,25 @@ private fun BottomBar(navigator: AppNavigator, modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        TabItem("会话", navState.route == AppNavState.ROUTE_HOME, navState.route != AppNavState.ROUTE_HOME) {
+        TabItem(stringResource(R.string.tab_sessions), navState.route == AppNavState.ROUTE_HOME,
+            navState.route != AppNavState.ROUTE_HOME) {
             navigator.navigate(AppNavState.ROUTE_HOME)
         }
+        // "+" 是纯字形:读屏读不出「发起任务」,必须自己给描述
+        val newTaskCd = stringResource(R.string.cd_new_task)
         Box(
             modifier = Modifier
                 .size(56.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .background(t.accent)
-                .clickable { navigator.openSheet(AppNavState.SHEET_TASK) },
+                .clickable(onClickLabel = newTaskCd, role = Role.Button) { navigator.openSheet(AppNavState.SHEET_TASK) }
+                .clearAndSetSemantics { contentDescription = newTaskCd },
             contentAlignment = Alignment.Center,
         ) {
             Text("+", color = t.accentInk, fontSize = 26.sp, fontWeight = FontWeight.Bold)
         }
-        TabItem("设置", navState.route == AppNavState.ROUTE_SETTINGS, navState.route != AppNavState.ROUTE_SETTINGS) {
+        TabItem(stringResource(R.string.tab_settings), navState.route == AppNavState.ROUTE_SETTINGS,
+            navState.route != AppNavState.ROUTE_SETTINGS) {
             navigator.navigate(AppNavState.ROUTE_SETTINGS)
         }
     }
@@ -279,24 +290,24 @@ private fun CrashBanner(onCopy: () -> Unit, onDismiss: () -> Unit) {
             Text("⚠", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.width(8.dp))
             Text(
-                "上次异常退出——可复制崩溃信息帮助定位",
+                stringResource(R.string.crash_banner_title),
                 color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.weight(1f),
             )
             Text(
-                "忽略 ×",
+                stringResource(R.string.crash_banner_dismiss),
                 color = Color.White.copy(alpha = 0.75f), fontSize = 12.sp,
                 modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                    .clickable { onDismiss() }.padding(horizontal = 8.dp, vertical = 4.dp),
+                    .clickable(role = Role.Button) { onDismiss() }.padding(horizontal = 8.dp, vertical = 4.dp),
             )
         }
         Spacer(Modifier.height(6.dp))
         Text(
-            "复制堆栈",
+            stringResource(R.string.crash_banner_copy),
             color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.clip(RoundedCornerShape(8.dp))
                 .background(Color.White.copy(alpha = 0.18f))
-                .clickable { onCopy() }.padding(horizontal = 12.dp, vertical = 6.dp),
+                .clickable(role = Role.Button) { onCopy() }.padding(horizontal = 12.dp, vertical = 6.dp),
         )
     }
 }
@@ -307,7 +318,7 @@ private fun TabItem(label: String, on: Boolean, enabled: Boolean, onClick: () ->
     Column(
         modifier = Modifier
             .clip(RoundedCornerShape(12.dp))
-            .clickable(enabled = enabled) { onClick() }
+            .clickable(enabled = enabled, role = Role.Button) { onClick() }
             .padding(horizontal = 22.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

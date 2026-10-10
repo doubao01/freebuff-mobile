@@ -79,6 +79,10 @@ class SettingsViewModel @Inject constructor(
     val memoryEnabled: StateFlow<Boolean> = settings.memoryEnabled
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
+    /** 计划模式:开启后写工具对模型不可见(对话页顶部显示状态与退出入口)。 */
+    val planMode: StateFlow<Boolean> = settings.planMode
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
     /** 深度思考(思维链)模式:off 不思考 / auto 按模型识别 / on 强制开启。 */
     val reasoningMode: StateFlow<String> = settings.reasoningMode
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), Reasoning.MODE_AUTO)
@@ -96,15 +100,23 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { settings.setMemoryEnabled(v) }
     }
 
+    /** 切换计划模式(立即生效:下一轮对话请求里就不再包含写工具)。 */
+    fun setPlanMode(v: Boolean) {
+        viewModelScope.launch {
+            settings.setPlanMode(v)
+            if (v) navigator.showSnack(context.getString(R.string.set_plan_mode_on_toast))
+        }
+    }
+
     /** 切换深度思考模式(立即生效,下一轮请求即携带对应参数)。 */
     fun setReasoningMode(mode: String) {
         viewModelScope.launch {
             settings.setReasoningMode(mode)
             navigator.showSnack(
                 when (mode) {
-                    Reasoning.MODE_OFF -> "深度思考:已关闭"
-                    Reasoning.MODE_ON -> "深度思考:开启(未识别的模型也会试 enable_thinking)"
-                    else -> "深度思考:自动按模型识别"
+                    Reasoning.MODE_OFF -> context.getString(R.string.set_reasoning_off_toast)
+                    Reasoning.MODE_ON -> context.getString(R.string.set_reasoning_on_toast)
+                    else -> context.getString(R.string.set_reasoning_auto_toast)
                 },
             )
         }
@@ -154,7 +166,7 @@ class SettingsViewModel @Inject constructor(
         _clearArmed.value = false
         viewModelScope.launch {
             sessionRepo.clearAll()
-            navigator.showSnack("已清除全部会话")
+            navigator.showSnack(context.getString(R.string.set_clear_sessions_done))
         }
     }
 
@@ -172,7 +184,7 @@ class SettingsViewModel @Inject constructor(
             when (val r = catalog.refresh()) {
                 is ApiResult.Ok -> {
                     _catalogError.value = null
-                    navigator.showSnack("官方目录已更新 · " + r.data.size + " 个模型")
+                    navigator.showSnack(context.getString(R.string.set_catalog_updated) + r.data.size + context.getString(R.string.set_models_count_suffix))
                 }
                 is ApiResult.Err -> {
                     _catalogError.value = r.error.userMessage
@@ -201,7 +213,7 @@ class SettingsViewModel @Inject constructor(
     fun setRepoParse(mode: String) {
         viewModelScope.launch {
             settings.setRepoParse(mode)
-            navigator.showSnack(if (mode == "strict") "已切换:严格解析" else "已切换:宽松原样")
+            navigator.showSnack(if (mode == "strict") context.getString(R.string.set_repo_strict_switched) else context.getString(R.string.set_repo_loose_switched))
         }
     }
 
@@ -214,7 +226,7 @@ class SettingsViewModel @Inject constructor(
     fun setModelId(id: String) {
         viewModelScope.launch {
             settings.setModelId(id)
-            navigator.showSnack("已切换模型")
+            navigator.showSnack(context.getString(R.string.set_model_switched))
         }
     }
 
@@ -246,7 +258,7 @@ class SettingsViewModel @Inject constructor(
                 _gitConnect.value = step
                 when (step) {
                     is GitConnectStep.Done ->
-                        navigator.showSnack("已关联 " + step.state.name)
+                        navigator.showSnack(context.getString(R.string.set_git_linked_prefix) + step.state.name)
                     is GitConnectStep.Failed -> {
                         _gitConnect.value = null
                         _gitError.value = step.message
@@ -269,7 +281,7 @@ class SettingsViewModel @Inject constructor(
         _gitError.value = null
         viewModelScope.launch {
             gitAuth.revoke()
-            navigator.showSnack("已断开 Git 账号")
+            navigator.showSnack(context.getString(R.string.set_git_unlinked))
         }
     }
 
@@ -314,7 +326,7 @@ class SettingsViewModel @Inject constructor(
             raw.filterIsInstance<CustomModel>()
                 .forEach { customModelRepo.add(it.copy(id = it.id.ifBlank { "cm-" + uid() })) }
             _repairRestored.value = true
-            navigator.showSnack("已恢复原始记录")
+            navigator.showSnack(context.getString(R.string.set_repair_restored))
         }
     }
 

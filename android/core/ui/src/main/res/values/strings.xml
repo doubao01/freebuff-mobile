@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  core:ui 的通用组件文案(默认英文)。
+  只有「组件自己产生、调用方给不了」的文案才放这里:调用方传入的 title/sub 仍由调用方负责。
+-->
+<resources>
+    <!-- ModelChip 未选模型时的占位文案 -->
+    <string name="model_chip_empty">Select a model</string>
+    <!-- 无障碍:整块芯片是一个可点按钮,读屏要说明点了会去哪 -->
+    <string name="cd_model_picker">Choose a model</string>
+</resources>

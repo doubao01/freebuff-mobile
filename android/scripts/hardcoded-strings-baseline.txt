@@ -1,0 +1,36 @@
+# 硬编码中文基线:路径 + 允许的字面量数量。
+# 由 scripts/check-hardcoded-strings.py --update 生成;数值只能降不能升。
+# 判定规则与「为什么留这些」见该脚本头部与 docs/i18n-and-accessibility.md §2/§4。
+core/data/src/main/java/com/freebuff/core/data/context/ContextBuilder.kt 17
+core/data/src/main/java/com/freebuff/core/data/network/ApiResult.kt 35
+core/data/src/main/java/com/freebuff/core/data/network/FreebuffApi.kt 3
+core/data/src/main/java/com/freebuff/core/data/network/GithubApi.kt 13
+core/data/src/main/java/com/freebuff/core/data/network/RequestFallbacks.kt 11
+core/data/src/main/java/com/freebuff/core/data/network/SilentRetry.kt 1
+core/data/src/main/java/com/freebuff/core/data/repository/CustomModelRepository.kt 4
+core/data/src/main/java/com/freebuff/core/data/repository/GitAuthRepository.kt 3
+core/data/src/main/java/com/freebuff/core/data/repository/MemoryRepository.kt 4
+core/data/src/main/java/com/freebuff/core/data/repository/SessionRepository.kt 2
+core/data/src/main/java/com/freebuff/core/data/repository/SubagentRunner.kt 10
+core/data/src/main/java/com/freebuff/core/data/repository/UpdateDownloader.kt 2
+core/data/src/main/java/com/freebuff/core/data/repository/UpdateRepository.kt 3
+core/data/src/main/java/com/freebuff/core/data/tools/ToolExecutors.kt 75
+core/model/src/main/java/com/freebuff/core/model/AgentEvents.kt 38
+core/model/src/main/java/com/freebuff/core/model/AgentLoop.kt 11
+core/model/src/main/java/com/freebuff/core/model/AgentNotify.kt 4
+core/model/src/main/java/com/freebuff/core/model/Catalog.kt 2
+core/model/src/main/java/com/freebuff/core/model/Cleaner.kt 1
+core/model/src/main/java/com/freebuff/core/model/ContextPolicy.kt 4
+core/model/src/main/java/com/freebuff/core/model/GitRef.kt 24
+core/model/src/main/java/com/freebuff/core/model/JsonArgs.kt 2
+core/model/src/main/java/com/freebuff/core/model/Memory.kt 4
+core/model/src/main/java/com/freebuff/core/model/MemoryEntry.kt 7
+core/model/src/main/java/com/freebuff/core/model/Models.kt 2
+core/model/src/main/java/com/freebuff/core/model/MsgSteps.kt 13
+core/model/src/main/java/com/freebuff/core/model/SessionGrouping.kt 9
+core/model/src/main/java/com/freebuff/core/model/Subagent.kt 15
+core/model/src/main/java/com/freebuff/core/model/ToolErrors.kt 76
+core/model/src/main/java/com/freebuff/core/model/Tools.kt 159
+core/ui/src/main/java/com/freebuff/core/ui/navigation/AppNavigator.kt 1
+feature/chat/src/main/java/com/freebuff/feature/chat/ChatScreen.kt 1
+feature/chat/src/main/java/com/freebuff/feature/chat/ChatViewModel.kt 18

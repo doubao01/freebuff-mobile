@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 无障碍:Logo 可点(循环切换主题),字形本身没有语义 -->
+    <string name="welcome_logo_cd">Change theme</string>
+
+    <string name="welcome_title_lead">Your ideas, handed to</string>
+    <string name="welcome_brand" translatable="false">Freebuff</string>
+    <string name="welcome_subtitle">The official Android app — a coding agent in your pocket. It plans, edits code, explains itself, and is completely free.</string>
+
+    <string name="welcome_feature_models">Frontier models, no subscription or API key</string>
+    <string name="welcome_feature_agent">The agent plans, executes and explains every step</string>
+    <string name="welcome_feature_local">Chats saved on this device · works offline</string>
+
+    <string name="welcome_sign_in">Sign in to Freebuff</string>
+    <string name="welcome_guest">Look around (guest mode)</string>
+    <string name="welcome_guest_note">Guest mode · data stays on this device</string>
+</resources>

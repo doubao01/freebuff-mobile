@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="action_cancel">取消</string>
+    <string name="action_delete">删除</string>
+    <string name="action_retry">重试</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_prev">上一步</string>
+
+    <string name="chat_title_new">新对话</string>
+    <string name="chat_context_compacted">已压缩早期上下文 · %1$d 条消息 → 摘要(约 %2$d token)</string>
+    <string name="chat_generating">● 正在生成…</string>
+    <string name="chat_reasoning_live">思考中…</string>
+    <string name="chat_reasoning_done">已深度思考 · 点开查看</string>
+
+    <string name="chat_action_copy">⧉ 复制</string>
+    <string name="chat_action_edit">✎ 编辑</string>
+    <string name="chat_action_delete_msg">⌫ 删除</string>
+    <string name="chat_action_regenerate">↻ 重新生成</string>
+    <string name="chat_code_copy">复制</string>
+    <string name="chat_edit_resend">重发</string>
+    <string name="chat_edit_drop_warning">重发会丢弃这条之后的消息(%1$d 条)</string>
+    <string name="chat_edit_regenerate_hint">重发会重新生成回复</string>
+
+    <string name="chat_delete_msg_title">删除这条消息?</string>
+    <string name="chat_label_user_message">用户消息</string>
+    <string name="chat_label_reply">回复</string>
+    <string name="chat_delete_msg_user_desc">只删这一条,它后面的回复会保留。删掉的那条也不再进入后续上下文。</string>
+    <string name="chat_delete_msg_agent_desc">只删这一条回复,其余消息不受影响。</string>
+
+    <string name="chat_tool_confirm_title">工具执行确认</string>
+    <string name="chat_tool_confirm_note">该工具需要你的确认后才会执行;拒绝会把结果告知模型。</string>
+    <string name="chat_tool_confirm_remember">本次会话记住选择(会话结束自动失效)</string>
+    <string name="chat_tool_confirm_deny">拒绝</string>
+    <string name="chat_tool_confirm_allow">允许执行</string>
+    <string name="chat_confirm_files">文件</string>
+
+    <string name="chat_tool_subagent_label">子代理 · </string>
+    <string name="chat_tool_state_waiting">待确认</string>
+    <string name="chat_tool_state_running">运行中</string>
+    <string name="chat_tool_state_error">失败</string>
+    <string name="chat_tool_state_reused">复用</string>
+    <string name="chat_tool_state_done">完成</string>
+    <string name="chat_tool_starting">启动中…</string>
+    <string name="chat_tool_incomplete">(未完成)</string>
+    <string name="chat_tool_detail_input">输入</string>
+    <string name="chat_tool_detail_output">输出</string>
+    <string name="chat_tool_detail_no_args">(无参数)</string>
+
+    <string name="chat_plan_mode_title">计划模式</string>
+    <string name="chat_plan_mode_hint">写工具已对模型隐藏:它只做调研并给出计划,不会改动仓库。</string>
+    <string name="chat_plan_mode_exit">退出</string>
+
+    <string name="chat_empty_title">今天想构建点什么?</string>
+    <string name="chat_empty_hint_can">可以直接描述需求,或从下面的示例开始</string>
+    <string name="chat_empty_hint_no_session">从首页点「+」发起任务</string>
+    <string name="chat_empty_examples">示例</string>
+    <string name="chat_composer_hint">描述任务…</string>
+    <string name="chat_composer_stop">停止</string>
+    <string name="chat_composer_send">发送</string>
+
+    <string name="chat_suggest_1">帮我写一个定时清理临时文件的脚本</string>
+    <string name="chat_suggest_2">这段代码为什么慢?帮我优化</string>
+    <string name="chat_suggest_3">给我一份 30 天 Python 学习路线</string>
+    <string name="chat_suggest_4">排查报错:undefined 的 map 调用</string>
+
+    <string name="chat_home_title">会话</string>
+    <string name="chat_home_search_hint">搜索会话</string>
+    <string name="chat_home_no_match">没有匹配的会话</string>
+    <string name="chat_home_no_match_hint">换个关键字试试,或清空搜索框</string>
+    <string name="chat_home_empty">还没有会话</string>
+    <string name="chat_home_empty_hint">点右下角「+」发起你的第一个任务</string>
+    <string name="chat_home_deleted">已删除「%1$s」</string>
+    <string name="chat_home_reveal_delete">删除</string>
+    <string name="chat_home_undo">撤销</string>
+
+    <string name="chat_session_menu_title">该会话</string>
+    <string name="chat_session_delete">删除会话</string>
+
+    <string name="chat_model_sheet_title">选择模型</string>
+    <string name="chat_model_sheet_sub">官方模型与你的自定义模型</string>
+    <string name="chat_model_official_nogw">官方模型 · 未配置网关</string>
+    <string name="chat_model_official_live">官方模型 · 网关实时</string>
+    <string name="chat_model_official_stale">官方模型 · 尚未拉取</string>
+    <string name="chat_model_nogw_note">本次构建未配置官方网关,官方模型不可用;添加自定义模型即可使用。</string>
+    <string name="chat_model_catalog_failed">目录拉取失败:</string>
+    <string name="chat_model_mine">我的模型</string>
+    <string name="chat_model_mine_empty">还没有自定义模型,可在 设置 → 自定义模型 中添加</string>
+    <string name="chat_model_current">当前</string>
+
+    <string name="chat_wizard_title">发起任务</string>
+    <string name="chat_wizard_sub">选择仓库 → 选择模型 → 描述任务</string>
+    <string name="chat_wizard_step_repo">代码仓库</string>
+    <string name="chat_wizard_step_model">模型</string>
+    <string name="chat_wizard_step_desc">描述任务</string>
+    <string name="chat_wizard_repo_none">不关联仓库</string>
+    <string name="chat_wizard_repo_manual">手动输入仓库地址</string>
+    <string name="chat_wizard_repo_git">Git 账号仓库</string>
+    <string name="chat_wizard_repo_none_title">任务将不关联任何代码仓库</string>
+    <string name="chat_wizard_repo_none_hint">适合提问、写脚本等不依赖仓库的任务</string>
+    <string name="chat_wizard_repo_url_hint">粘贴 git clone 链接或仓库地址</string>
+    <string name="chat_wizard_repo_as_is">原样使用</string>
+    <string name="chat_wizard_repo_completed">已补全</string>
+    <string name="chat_wizard_repo_loose">宽松原样:按输入原样使用</string>
+    <string name="chat_wizard_branch_prefix">分支 </string>
+    <string name="chat_wizard_repo_incomplete">仓库地址不完整,需要包含 主机/所有者/仓库</string>
+    <string name="chat_wizard_git_none">尚未关联 Git 账号,去 设置 → 集成 → Git 账号 关联后即可读取仓库</string>
+    <string name="chat_wizard_link_now">立即关联</string>
+    <string name="chat_wizard_loading_repos">正在读取仓库列表…</string>
+    <string name="chat_wizard_repos_failed">仓库列表加载失败:</string>
+    <string name="chat_wizard_repos_empty">该账号暂无可读仓库,可改用「手动输入仓库地址」</string>
+    <string name="chat_wizard_picked">已选</string>
+    <string name="chat_wizard_no_models">还没有可用模型</string>
+    <string name="chat_wizard_no_models_hint">官方模型需在构建时配置网关地址;自定义模型可在 设置 → 自定义模型 里添加一个 OpenAI 兼容端点。</string>
+    <string name="chat_wizard_official">官方模型</string>
+    <string name="chat_wizard_mine">我的模型</string>
+    <string name="chat_wizard_desc_hint">例如:修复登录页在深色模式下的对比度问题,并补充单元测试…</string>
+    <string name="chat_wizard_model_prefix">模型: </string>
+    <string name="chat_wizard_repo_prefix">仓库: </string>
+    <string name="chat_wizard_not_picked">未选择</string>
+    <string name="chat_wizard_next">下一步</string>
+
+    <string name="chat_wizard_err_no_repo">请先选择一个仓库</string>
+    <string name="chat_wizard_err_repo_incomplete">仓库地址不完整</string>
+    <string name="chat_wizard_err_no_desc">请先描述任务</string>
+    <string name="chat_wizard_err_desc_too_long">任务描述不能超过 %1$d 字</string>
+
+    <string name="chat_step_connecting">连接模型并开始生成…</string>
+    <string name="chat_snack_catalog_updated">官方目录已更新 · %1$d 个模型</string>
+    <string name="chat_snack_model_switched">已切换 %1$s</string>
+    <string name="chat_snack_copied">已复制</string>
+    <string name="chat_snack_regen_last_only">只能重新生成最后一条回复</string>
+    <string name="chat_snack_resend_invalid">这条消息不能重发:内容为空,或它不是用户消息</string>
+    <string name="chat_snack_deleted">已删除该条消息</string>
+    <string name="chat_snack_session_restored">已恢复会话</string>
+    <string name="chat_note_user_denied_tool">(用户拒绝执行该工具)</string>
+    <string name="chat_note_idle_stop">\n\n⚠ 超过 %1$d 秒没有收到新的流式数据,已自动停止生成;以上为已收到的部分回复。</string>
+    <string name="chat_step_retry">⟳ 第 %1$d/%2$d 次尝试</string>
+    <string name="chat_step_retry_reason">上次失败:%1$s;退避后自动重试</string>
+    <string name="chat_error_request_failed">\n⚠ 请求失败:%1$s</string>
+
+    <string name="chat_no_model_unpicked">⚠ 还没有选择模型\n\n点上方模型条选择一个模型再发送。</string>
+    <string name="chat_no_model_unavailable">⚠ 当前模型不可用\n\n它可能已被删除或缺少端点配置,请在模型列表中选择其他模型。</string>
+    <string name="chat_no_model_none">⚠ 当前没有可用模型\n\n请到 设置 → 自定义模型 添加一个 OpenAI 兼容端点,再在模型列表中选择它。\n(官方模型需要在构建时配置官方网关地址)</string>
+
+    <string name="chat_ctx_repo_prefix">\n\n本次任务关联仓库:</string>
+
+    <string name="chat_cd_back">返回</string>
+    <string name="chat_cd_expand">展开详情</string>
+    <string name="chat_cd_collapse">收起详情</string>
+    <string name="chat_cd_clear_search">清空搜索</string>
+    <string name="chat_cd_session_menu">会话操作</string>
+    <string name="chat_cd_open_chat">打开会话</string>
+    <string name="chat_cd_composer_mention">插入 @ 提及</string>
+    <string name="chat_cd_composer_file">插入文件引用</string>
+</resources>

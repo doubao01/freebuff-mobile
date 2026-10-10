@@ -64,6 +64,12 @@ android/
 自定义模型端点探测、GitHub OAuth 设备流授权与仓库读取、版本检查更新(真实拉取本仓库公开的
 [`dist/update.json`](dist/update.json),有新版本时直达发布页下载)。
 
+**端侧 agent 能力**:11 个真实执行的工具(联网搜索/抓取、GitHub 搜索与读文件、计算器、记忆读写…)
+含参数体检与带处方的错误信封,以及**端上跑的子代理编排**(`spawn_subagent` 派只读子代理,独立上下文、
+结论压缩回填,见 [`android/docs/subagent-design.md`](android/docs/subagent-design.md))。
+多轮任务跑在**前台服务**里:切走或锁屏后继续执行,结束时用通知提醒一次
+(见 [`android/docs/backend-integration.md`](android/docs/backend-integration.md) §3.3.8)。
+
 **仍需自行配置的能力**:官方模型网关地址与 GitHub OAuth client_id 在 `android/app/build.gradle.kts`
 的 `buildConfigField` 中留空——留空时 UI 明确提示「未配置」,不静默回退演示数据,因此开箱即可编译运行:
 

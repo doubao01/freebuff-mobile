@@ -1,7 +1,9 @@
 package com.freebuff.app.di
 
+import com.freebuff.app.AgentTaskNotifierImpl
 import com.freebuff.app.AppNavigatorImpl
 import com.freebuff.core.ui.navigation.AppNavigator
+import com.freebuff.core.ui.platform.AgentTaskNotifier
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -13,6 +15,8 @@ import javax.inject.Singleton
 /**
  * app 模块装配:
  * - [AppNavigator] 单例绑定(route/sheet/snackbar 全局状态)
+ * - [AgentTaskNotifier] 单例绑定(长任务前台保活 + 完成通知:实现要用 Context 与 Android 通知 API,
+ *   所以接口在 core:ui、实现留在 app,feature 层只注入接口)
  * - 三个可配置密钥与已安装版本号只读自 BuildConfig,feature/core 层经 @Named 注入,
  *   不直接引用 app 的 BuildConfig。
  */
@@ -23,6 +27,10 @@ abstract class AppModule {
     @Binds
     @Singleton
     abstract fun bindAppNavigator(impl: AppNavigatorImpl): AppNavigator
+
+    @Binds
+    @Singleton
+    abstract fun bindAgentTaskNotifier(impl: AgentTaskNotifierImpl): AgentTaskNotifier
 
     companion object {
         @Provides

@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- app 模块文案的中文版(与 values/strings.xml 的 key 一一对应) -->
+<resources>
+    <string name="tab_sessions">会话</string>
+    <string name="tab_settings">设置</string>
+
+    <string name="cd_new_task">发起新任务</string>
+
+    <string name="crash_banner_title">上次异常退出——可复制崩溃信息帮助定位</string>
+    <string name="crash_banner_dismiss">忽略</string>
+    <string name="crash_banner_copy">复制堆栈</string>
+    <string name="crash_stack_copied">崩溃堆栈已复制,可粘贴发给开发者</string>
+
+    <string name="notify_channel_running">生成中</string>
+    <string name="notify_channel_running_desc">对话正在生成时的常驻状态</string>
+    <string name="notify_channel_done">回复完成</string>
+    <string name="notify_channel_done_desc">对话回复完成或失败时的提醒</string>
+    <string name="notify_running">正在生成</string>
+    <string name="notify_connecting">连接模型并开始生成…</string>
+    <string name="notify_connecting_model">连接 %1$s 并开始生成…</string>
+    <string name="notify_done_ok">回复已完成</string>
+    <string name="notify_done_fail">本轮没有完成</string>
+
+    <string name="notify_permission_denied">未授予通知权限:任务仍会在后台继续,只是完成时不会提醒</string>
+</resources>

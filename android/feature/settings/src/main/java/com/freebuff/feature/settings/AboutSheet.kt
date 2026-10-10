@@ -28,6 +28,7 @@ import com.freebuff.core.ui.RFull
 import com.freebuff.core.ui.SheetScaffold
 import com.freebuff.core.ui.navigation.LocalAppNavigator
 import com.freebuff.core.ui.theme.LocalTokens
+import androidx.compose.ui.res.stringResource
 
 /**
  * 关于 Freebuff Mobile:能力说明 + 后续计划。
@@ -40,7 +41,7 @@ fun AboutSheet(viewModel: SettingsViewModel = hiltViewModel()) {
     val navigator = LocalAppNavigator.current
     // 版本显示用实际安装的包版本(BuildConfig.VERSION_NAME),不再落库、不可被写脏
     val version = viewModel.appVersion
-    SheetScaffold("关于 Freebuff Mobile", "Freebuff Mobile · v" + version) {
+    SheetScaffold(stringResource(R.string.set_about_title), "Freebuff Mobile · v" + version) {
         Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
             Row(verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(top = 4.dp, bottom = 14.dp)) {
@@ -50,19 +51,24 @@ fun AboutSheet(viewModel: SettingsViewModel = hiltViewModel()) {
                 ) { Text(">_", color = t.accent, fontSize = 20.sp, fontWeight = FontWeight.Bold) }
                 Spacer(Modifier.width(12.dp))
                 Column {
-                    Text("把想法,交给 Freebuff", color = t.text2, fontSize = 13.sp)
+                    Text(stringResource(R.string.set_about_brand_line), color = t.text2, fontSize = 13.sp)
                     Text("Freebuff Mobile · v" + version, color = t.text, fontSize = 13.5.sp,
                         fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 2.dp))
                 }
             }
-            Text(ABOUT_BODY, color = t.text2, fontSize = 13.sp, lineHeight = 21.sp)
+            Text(stringResource(R.string.set_about_body), color = t.text2, fontSize = 13.sp, lineHeight = 21.sp)
             Spacer(Modifier.height(14.dp))
-            Text("后续计划", color = t.text, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.set_about_plan), color = t.text, fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(5.dp))
-            Text(ABOUT_PLAN, color = t.text2, fontSize = 13.sp, lineHeight = 21.sp)
+            Text(
+                stringResource(R.string.set_about_plan_1) +
+                    stringResource(R.string.set_about_plan_2) +
+                    stringResource(R.string.set_about_plan_3),
+                color = t.text2, fontSize = 13.sp, lineHeight = 21.sp,
+            )
             Spacer(Modifier.height(20.dp))
             Text(
-                "知道了",
+                stringResource(R.string.set_about_got_it),
                 color = t.accentInk, fontSize = 13.5.sp, fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth().clip(RFull).background(t.accent)
@@ -71,14 +77,3 @@ fun AboutSheet(viewModel: SettingsViewModel = hiltViewModel()) {
         }
     }
 }
-
-private const val ABOUT_BODY =
-    "Freebuff 官方安卓客户端:与自主编码 Agent 对话,把想法直接落到代码与任务上。\n" +
-        "对话走真实网络:官方模型经 Freebuff 网关,自定义模型直连你填写的 OpenAI 兼容端点;" +
-        "Git 账号通过 GitHub OAuth 设备流授权,可直接读取你的仓库列表。\n" +
-        "会话、设置与自定义模型保存在本机数据库;API Key 与 Git token 经 Android Keystore 加密后落库。"
-
-private const val ABOUT_PLAN =
-    "1) 接入真正的应用内更新流程(下载、校验、安装);\n" +
-        "2) 支持更多 Git 服务商,并扩展到提交 / 开 PR;\n" +
-        "3) 子代理编排(多路并行探索与并行改码)。"

@@ -10,6 +10,17 @@
     -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
+    <!--
+      长任务前台保活:多轮 agent 任务(流式 + 工具循环)动辄几十秒到几分钟,
+      切走或锁屏后没有前台服务的进程会被冻结/回收,回复就断在半截。
+      dataSync 类型：本地处理对话数据,不上传用户数据到任何自有服务。
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- API 33+ 的运行时权限:未授予时前台服务照常运行(任务不会断),只是通知不可见。 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:name="com.freebuff.app.FreebuffApplication"
         android:allowBackup="true"
@@ -27,6 +38,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+          长任务前台服务:运行中挂一条低优先级常驻通知,结束时发一条可点回的完成通知。
+          "通知权限被拒时前台服务仍然合法(通知只是不可见),任务不会因此中断。"
+        -->
+        <service
+            android:name="com.freebuff.app.AgentForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
 
         <!--
           更新包落在 cacheDir/update/(应用私有,外部存储读不到),

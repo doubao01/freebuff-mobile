@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="welcome_logo_cd">切换主题</string>
+
+    <string name="welcome_title_lead">把想法,交给</string>
+    <string name="welcome_subtitle">官方安卓 App · 一个随身携带的编码 Agent:会规划、会改代码、会解释,并且完全免费。</string>
+
+    <string name="welcome_feature_models">多个前沿模型,无需订阅或 API Key</string>
+    <string name="welcome_feature_agent">Agent 自动规划、执行并解释每一步</string>
+    <string name="welcome_feature_local">会话本地保存 · 随时离线可用</string>
+
+    <string name="welcome_sign_in">登录 Freebuff 账号</string>
+    <string name="welcome_guest">先逛逛(访客模式)</string>
+    <string name="welcome_guest_note">访客模式 · 数据仅存于本机</string>
+</resources>

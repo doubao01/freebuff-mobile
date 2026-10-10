@@ -1,0 +1,16 @@
+<!--
+  通知栏小图标:必须是单色(系统只取 alpha 通道着色)。
+  形状沿用品牌「终端提示符」意象:左侧一个 › 折角,右下一条下划线。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M5,5.2 L11.4,12 L5,18.8 L8.2,18.8 L14.6,12 L8.2,5.2 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M13.6,16.4 L19.4,16.4 L19.4,18.8 L13.6,18.8 Z" />
+</vector>

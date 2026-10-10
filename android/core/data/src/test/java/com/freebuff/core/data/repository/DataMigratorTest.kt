@@ -348,6 +348,10 @@ class DataMigratorTest {
             messages.remove(sessionId)
         }
 
+        override suspend fun deleteMessageIds(sessionId: String, ids: List<String>) {
+            messages[sessionId]?.let { cur -> messages[sessionId] = cur.filterNot { it.id in ids } }
+        }
+
         override suspend fun clearMessages() {
             messages.clear()
         }
@@ -418,6 +422,7 @@ class DataMigratorTest {
         override fun observeMessages(sessionId: String): Flow<List<MessageEntity>> = flowOf(emptyList())
         override suspend fun upsertMessages(list: List<MessageEntity>) = Unit
         override suspend fun deleteMessages(sessionId: String) = Unit
+        override suspend fun deleteMessageIds(sessionId: String, ids: List<String>) = Unit
         override suspend fun clearMessages() = Unit
         override fun observeCustomModels(): Flow<List<CustomModelEntity>> = flowOf(emptyList())
         override suspend fun customModel(id: String): CustomModelEntity? = null

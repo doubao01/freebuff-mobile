@@ -1,7 +1,8 @@
 # 端侧子代理机制:最小可行方案(MVP 设计)
 
 端侧(手机本机)编排子代理:主 agent 把任务拆成子任务,子代理各自跑一条独立的 LLM 循环,
-结果压缩后回填主循环。本文是 **MVP 设计文档**,按 P0/P1/P2 分阶段落地;行为参考
+结果压缩后回填主循环。本文是 **MVP 设计文档**,按 P0/P1/P2 分阶段落地
+(**P0 已落地**:`spawn_subagent` 真执行,串行、三类型均可用,见 §12);行为参考
 agent-architecture.md 的后端运行时(spawn_agents / spawn_agent_inline / subagent-response-chunk)。
 
 ## 0. 现状与可复用资产
@@ -14,6 +15,7 @@ agent-architecture.md 的后端运行时(spawn_agents / spawn_agent_inline / sub
 | 权限层:ToolPermissions(allow/confirm/deny)+ SessionPermissionMemory | core/model ToolPermissions.kt | 子代理继承父权限;CONFIRM 在子代理内降级为 deny(见 §5) |
 | 上下文预算:ContextPolicy / ContextBuilder / compressToolResult | core/model + core/data | 子代理输出回填主上下文前的压缩闸门 |
 | 工具执行器 ToolExecutors:**单线程串行** | core/data tools | 并发子代理不能依赖它;子代理用独立协程 + OkHttp 异步 |
+| **子代理执行引擎(P0 已落地)** | core/data `SubagentRunner.kt` + `ChatViewModel.dispatchTool` | 串行跑一个子代理:独立上下文 + 只读白名单 + 自己的 LLM 循环,结论压缩后作为普通 tool_result 回填主循环(见 §12) |
 
 ## 1. 目标与非目标(MVP 边界)
 
@@ -127,7 +129,7 @@ spawn_subagent(agent_type: "researcher"|"code_reader"|"analyst",
 
 | 阶段 | 内容 | 验收 |
 |---|---|---|
-| **P0** 串行单子代理 | spawn_subagent 注册 + 单类型 researcher + 串行执行 + 卡片 done/error + 结果回填 | 模拟器:主任务「搜索 A 并总结,同时读仓库 B 的 README」模型能拆 2 次 spawn(串行),最终回复聚合两路结果 |
+| **P0** 串行单子代理 ✅ **已落地** | spawn_subagent 注册(工具定义 + 权限默认 ALLOW)+ 串行执行 + 卡片 done/error + 结果回填。落地范围比原计划宽一点:**三种类型都可用**(执行引擎按类型取白名单,不做类型开关),但仍是**单轮内串行** | 单测已覆盖(SubagentRunnerTest 8 例:一轮工具往返、白名单/权限降级、轮数用尽强制收敛、确定性失败不重试、瞬时失败重试、空结论归因);模拟器端到端待补(见 §12 末的验收缺口) |
 | **P1** 并发 + 实时流 | Semaphore(2) 并发 + SubagentChunk 流式尾部 + 三类型剧本 + 超时/限流 | 双子代理并发可观察(两卡同时呼吸);停止按钮级联取消 |
 | **P2** 打磨 | 子代理用廉价快模型(按类型映射 ChatTarget)、token 消耗统计、失败自动重 spawn 策略提示 | — |
 
@@ -142,6 +144,35 @@ spawn_subagent(agent_type: "researcher"|"code_reader"|"analyst",
 | 停止级联取消 | 后端 abort 杀整棵进程树 |
 
 **实现落点**:`core/model/Tools.kt`(spawn_subagent 定义 + SUBAGENT_TOOLS)、
-`core/model/Subagent.kt`(剧本/参数解析/常量,新文件)、
-`core/data` 新增 `SubagentRunner.kt`(执行引擎,不塞进 ChatViewModel)、
-`feature/chat/ChatViewModel.kt`(dispatchTool 分派 + 卡片接线)。预计 P0 ≈ 400 行 + 单测。
+`core/model/Subagent.kt`(剧本/参数解析/常量)、
+`core/data` 的 `SubagentRunner.kt`(执行引擎,不塞进 ChatViewModel)、
+`feature/chat/ChatViewModel.kt`(dispatchTool 分派 + 卡片接线)。
+
+---
+
+## 12. P0 实现现状(已落地)
+
+`spawn_subagent` 现在**真的会执行**。主模型调用它 → 端上串行跑一个子代理 → 结论压缩后作为本轮
+普通 `tool_result` 交给主循环(主模型看得到的只有结论 + 来源标签,看不到子代理的工具过程)。
+
+| 环节 | 实际行为 |
+|---|---|
+| 入口 | `ChatViewModel.dispatchTool` → `Subagent.TOOL_NAME -> runSubagent(...)`;先过统一权限层(默认 ALLOW,用户可改成需确认/禁止) |
+| 参数 | `Subagent.parseRequest`;`agent_type` 未知或 `task` 为空 → 回 `[工具错误]` 信封(带正确调用示例),**不执行** |
+| 白名单 | `Subagent.toolsFor(type)` 再按权限过滤:**只有 ALLOW 级工具**进子代理清单,CONFIRM/DENY 一律摘掉(后台任务不能阻塞在弹窗上);剧本 `Subagent.systemPrompt(type, toolNames)` 按实际可用工具说实情 |
+| 越权调用 | 模型硬调清单外的名字(含幻觉工具、`spawn_subagent` 自己)→ 不执行,回 `UNKNOWN_TOOL` 信封并列出可用工具(深度固定 1) |
+| 上下文 | 只有自己的 system 剧本 + `task/context/expected_output`;**不读主会话历史**;子代理的中间过程只回填给它自己 |
+| 轮数 | 最多 `MAX_TOOL_ROUNDS`(3)轮工具;**用尽后去掉 `tools` 再要一次**,逼它基于已有结果收敛成结论;另有 `MAX_REQUESTS` 兜底 |
+| 时限与重试 | 总时限 `DEADLINE_MS`(120s,超时→失败归因);流空闲看门狗 `IDLE_TIMEOUT_MS`(60s);瞬时失败(超时/连接/429/5xx/流空闲)最多重试 `MAX_RETRIES`(1)次,**且仅在本轮尚无输出时**(避免重复文本) |
+| 回填 | `Subagent.formatResult` 带来源标签(`[子代理 researcher 完成 · 2 轮工具 · web_search]`)→ `ContextPolicy.compressToolResult`(1200 token 上限) |
+| 失败 | `Subagent.formatFailure`:说清这一路没结果 + 给主模型替代路径(改用 `web_search`/`web_fetch`/`github_get_*` 或直接告知用户),避免原地重派 |
+| UI | 卡片就地改成子代理形态(`subagent:<type>`,复用 `ToolCard.SUBAGENT_PREFIX` 渲染分支):运行中按 80 字符节流写入正文尾部做「实时尾部」,收尾后展开区是压缩后的最终输出 |
+| 持久化 | 子代理转录**不落库**(仅卡片) —— 进程死亡即丢弃,与 §8 一致 |
+| 取消 | 用户「停止」= 取消主协程 → structured concurrency 级联取消子代理(callbackFlow 的 awaitClose 中断 HTTP) |
+
+回归位置:`core/data/src/test/.../SubagentRunnerTest`(MockWebServer;全程用 `analyst` 的 calculator,
+零外网)、`core/model/src/test/.../SubagentTest`(参数/白名单/剧本/回填格式)。
+
+**验收缺口(未做)**:设计文档原本的 P0 验收是模拟器端到端(主任务拆两次 spawn、串行跑完、最终回复聚合两路)。
+当前只有单测覆盖引擎本身与请求契约;**真机矩阵尚无 `subagent` 场景**——补场景时建议用 `analyst`
+(calculator 纯本地,不依赖外网与 mock 之外的服务),并在 mock 里按「system 提示词含『子代理』」分流剧本。

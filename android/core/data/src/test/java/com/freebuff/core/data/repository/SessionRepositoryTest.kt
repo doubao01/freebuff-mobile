@@ -163,6 +163,55 @@ class SessionRepositoryTest {
         )
     }
 
+    @Test
+    fun `删除中间一条后追加不会与既有行撞号`() = runTest {
+        // 消单条删除会留下序号空洞:取号若用「消息条数」就会与既有行同序号,
+        // 两条同 sort 时会话内顺序不再确定(历史显示错乱)
+        val s = repo.create("A")
+        repo.appendMessages(
+            s.id,
+            listOf(
+                ChatMsg("m1", "user", text = "问"),
+                ChatMsg("m2", "agent", text = "答"),
+                ChatMsg("m3", "user", text = "再问"),
+                ChatMsg("m4", "agent", text = "再答"),
+            ),
+        )
+        repo.deleteMessages(s.id, listOf("m2"))
+        assertEquals(listOf("m1", "m3", "m4"), repo.get(s.id)!!.messages.map { it.id })
+        assertEquals("只删指定的那一条", listOf(0L, 2L, 3L), dao.messages[s.id]!!.map { it.sort })
+
+        repo.appendMessages(s.id, listOf(ChatMsg("m5", "agent", text = "重跑")))
+        assertEquals(
+            "新消息要排在最后(取 max+1 = 4,不撞到 m3 的 3)",
+            listOf("m1", "m3", "m4", "m5"),
+            repo.get(s.id)!!.messages.map { it.id },
+        )
+        assertEquals(listOf(0L, 2L, 3L, 4L), dao.messages[s.id]!!.map { it.sort })
+    }
+
+    @Test
+    fun `消息改写与删除后会话预览按剩余消息重算`() = runTest {
+        val s = repo.create("A")
+        repo.appendMessages(
+            s.id,
+            listOf(
+                ChatMsg("m1", "user", text = "第一个问题"),
+                ChatMsg("m2", "agent", text = "回答"),
+                ChatMsg("m3", "user", text = "第二个问题"),
+            ),
+        )
+        assertEquals("第二个问题", dao.sessions[s.id]!!.preview)
+
+        repo.deleteMessages(s.id, listOf("m3"))
+        repo.refreshPreview(s.id)
+        assertEquals("预览不能还指着已删掉的消息", "第一个问题", dao.sessions[s.id]!!.preview)
+
+        repo.replaceMessage(s.id, "m1", ChatMsg("m1", "user", text = "改写后的问题"))
+        repo.refreshPreview(s.id)
+        assertEquals("改写后的问题", dao.sessions[s.id]!!.preview)
+    }
+
     /* ---------------- 全内存 DAO(会话/消息真实读写,其余无需关心) ---------------- */
     private class MemDao : FreebuffDao {
         val sessions = LinkedHashMap<String, SessionEntity>()
@@ -194,6 +243,10 @@ class SessionRepositoryTest {
         }
 
         override suspend fun deleteMessages(sessionId: String) { messages.remove(sessionId) }
+
+        override suspend fun deleteMessageIds(sessionId: String, ids: List<String>) {
+            messages[sessionId]?.let { cur -> messages[sessionId] = cur.filterNot { it.id in ids } }
+        }
         override suspend fun clearMessages() { messages.clear() }
 
         override fun observeCustomModels(): Flow<List<CustomModelEntity>> = flowOf(emptyList())

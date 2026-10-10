@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  feature:chat 的界面文案(默认语言 = 英文)。
+  只放「给人看的」文案:模型侧提示词、工具说明书、错误信封等给模型读的文本留在 Kotlin 里
+  (见 docs/backend-integration.md「文案边界」),翻译它们会改变模型行为。
+-->
+<resources>
+    <!-- 通用动作 -->
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_prev">Back</string>
+
+    <!-- 对话页 -->
+    <string name="chat_title_new">New chat</string>
+    <string name="chat_context_compacted">Early context compacted · %1$d messages → summary (about %2$d tokens)</string>
+    <string name="chat_generating">● Generating…</string>
+    <string name="chat_reasoning_live">Thinking…</string>
+    <string name="chat_reasoning_done">Thought it through · tap to view</string>
+
+    <!-- 消息级操作(重新生成 / 编辑重发 / 删除) -->
+    <string name="chat_action_copy">⧉ Copy</string>
+    <string name="chat_action_edit">✎ Edit</string>
+    <string name="chat_action_delete_msg">⌫ Delete</string>
+    <string name="chat_action_regenerate">↻ Regenerate</string>
+    <string name="chat_code_copy">Copy</string>
+    <string name="chat_edit_resend">Resend</string>
+    <string name="chat_edit_drop_warning">Resending drops the %1$d messages after this one</string>
+    <string name="chat_edit_regenerate_hint">Resending generates a new reply</string>
+
+    <!-- 删除消息确认 -->
+    <string name="chat_delete_msg_title">Delete this message?</string>
+    <string name="chat_label_user_message">User message</string>
+    <string name="chat_label_reply">Reply</string>
+    <string name="chat_delete_msg_user_desc">Only this message is removed; the replies after it stay. It also leaves the context of later turns.</string>
+    <string name="chat_delete_msg_agent_desc">Only this reply is removed; other messages are unaffected.</string>
+
+    <!-- 工具执行确认 -->
+    <string name="chat_tool_confirm_title">Confirm tool execution</string>
+    <string name="chat_tool_confirm_note">This tool runs only after you approve it; a denial is reported back to the model.</string>
+    <string name="chat_tool_confirm_remember">Remember my choice for this chat (cleared when the chat ends)</string>
+    <string name="chat_tool_confirm_deny">Deny</string>
+    <string name="chat_tool_confirm_allow">Allow</string>
+    <string name="chat_confirm_files">Files</string>
+
+    <!-- 工具卡片 -->
+    <string name="chat_tool_subagent_label">Subagent · </string>
+    <string name="chat_tool_state_waiting">Pending approval</string>
+    <string name="chat_tool_state_running">Running</string>
+    <string name="chat_tool_state_error">Failed</string>
+    <string name="chat_tool_state_reused">Reused</string>
+    <string name="chat_tool_state_done">Done</string>
+    <string name="chat_tool_starting">Starting…</string>
+    <string name="chat_tool_incomplete">(not finished)</string>
+    <string name="chat_tool_detail_input">Input</string>
+    <string name="chat_tool_detail_output">Output</string>
+    <string name="chat_tool_detail_no_args">(no arguments)</string>
+
+    <!-- 计划模式状态条(写工具已对模型隐藏) -->
+    <string name="chat_plan_mode_title">Plan mode</string>
+    <string name="chat_plan_mode_hint">Write tools are hidden from the model, so it investigates and proposes a plan instead of changing the repo.</string>
+    <string name="chat_plan_mode_exit">Exit</string>
+
+    <!-- 空会话与输入区 -->
+    <string name="chat_empty_title">What do you want to build today?</string>
+    <string name="chat_empty_hint_can">Describe the task, or start from an example below</string>
+    <string name="chat_empty_hint_no_session">Tap + on the home screen to start a task</string>
+    <string name="chat_empty_examples">Examples</string>
+    <string name="chat_composer_hint">Describe the task…</string>
+    <string name="chat_composer_stop">Stop</string>
+    <string name="chat_composer_send">Send</string>
+
+    <!-- 示例任务(点一下就是一条真实发送的任务描述) -->
+    <string name="chat_suggest_1">Write a script that periodically cleans up temp files</string>
+    <string name="chat_suggest_2">Why is this code slow? Help me optimize it</string>
+    <string name="chat_suggest_3">Give me a 30-day Python learning plan</string>
+    <string name="chat_suggest_4">Debug this error: undefined map call</string>
+
+    <!-- 会话列表 -->
+    <string name="chat_home_title">Chats</string>
+    <string name="chat_home_search_hint">Search chats</string>
+    <string name="chat_home_no_match">No matching chats</string>
+    <string name="chat_home_no_match_hint">Try another keyword, or clear the search box</string>
+    <string name="chat_home_empty">No chats yet</string>
+    <string name="chat_home_empty_hint">Tap + at the bottom right to start your first task</string>
+    <string name="chat_home_deleted">Deleted “%1$s”</string>
+    <string name="chat_home_reveal_delete">Delete</string>
+    <string name="chat_home_undo">Undo</string>
+
+    <!-- 会话菜单 -->
+    <string name="chat_session_menu_title">This chat</string>
+    <string name="chat_session_delete">Delete chat</string>
+
+    <!-- 模型表 -->
+    <string name="chat_model_sheet_title">Choose a model</string>
+    <string name="chat_model_sheet_sub">Official models and your custom ones</string>
+    <string name="chat_model_official_nogw">Official models · gateway not configured</string>
+    <string name="chat_model_official_live">Official models · live from gateway</string>
+    <string name="chat_model_official_stale">Official models · not fetched yet</string>
+    <string name="chat_model_nogw_note">This build has no official gateway configured, so official models are unavailable. Add a custom model to get started.</string>
+    <string name="chat_model_catalog_failed">Catalog fetch failed: </string>
+    <string name="chat_model_mine">My models</string>
+    <string name="chat_model_mine_empty">No custom models yet — add one in Settings → Custom models</string>
+    <string name="chat_model_current">Current</string>
+
+    <!-- 发起任务向导 -->
+    <string name="chat_wizard_title">New task</string>
+    <string name="chat_wizard_sub">Pick a repository → model → task</string>
+    <string name="chat_wizard_step_repo">Repository</string>
+    <string name="chat_wizard_step_model">Model</string>
+    <string name="chat_wizard_step_desc">Task</string>
+    <string name="chat_wizard_repo_none">No repository</string>
+    <string name="chat_wizard_repo_manual">Enter a repository URL</string>
+    <string name="chat_wizard_repo_git">Git account repositories</string>
+    <string name="chat_wizard_repo_none_title">The task will not be linked to any repository</string>
+    <string name="chat_wizard_repo_none_hint">Good for questions, scripts and other repo-free tasks</string>
+    <string name="chat_wizard_repo_url_hint">Paste a git clone URL or repository address</string>
+    <string name="chat_wizard_repo_as_is">Use as-is</string>
+    <string name="chat_wizard_repo_completed">Completed</string>
+    <string name="chat_wizard_repo_loose">Loose mode: use the input as-is</string>
+    <string name="chat_wizard_branch_prefix">Branch </string>
+    <string name="chat_wizard_repo_incomplete">Repository address is incomplete — it needs host/owner/repo</string>
+    <string name="chat_wizard_git_none">No Git account linked yet. Link one in Settings → Integrations → Git account to read your repositories.</string>
+    <string name="chat_wizard_link_now">Link now</string>
+    <string name="chat_wizard_loading_repos">Loading repositories…</string>
+    <string name="chat_wizard_repos_failed">Failed to load repositories: </string>
+    <string name="chat_wizard_repos_empty">This account has no readable repositories — use “Enter a repository URL” instead</string>
+    <string name="chat_wizard_picked">Selected</string>
+    <string name="chat_wizard_no_models">No model available</string>
+    <string name="chat_wizard_no_models_hint">Official models need a gateway configured at build time; add a custom model in Settings → Custom models with an OpenAI-compatible endpoint.</string>
+    <string name="chat_wizard_official">Official models</string>
+    <string name="chat_wizard_mine">My models</string>
+    <string name="chat_wizard_desc_hint">e.g. Fix the contrast issue on the sign-in page in dark mode, and add unit tests…</string>
+    <string name="chat_wizard_model_prefix">Model: </string>
+    <string name="chat_wizard_repo_prefix">Repo: </string>
+    <string name="chat_wizard_not_picked">Not selected</string>
+    <string name="chat_wizard_next">Next</string>
+
+    <!-- 向导校验提示 -->
+    <string name="chat_wizard_err_no_repo">Pick a repository first</string>
+    <string name="chat_wizard_err_repo_incomplete">Repository address is incomplete</string>
+    <string name="chat_wizard_err_no_desc">Describe the task first</string>
+    <string name="chat_wizard_err_desc_too_long">Task description cannot exceed %1$d characters</string>
+
+    <!-- 状态与提示条 -->
+    <string name="chat_step_connecting">Connecting to the model…</string>
+    <string name="chat_snack_catalog_updated">Official catalog updated · %1$d models</string>
+    <string name="chat_snack_model_switched">Switched to %1$s</string>
+    <string name="chat_snack_copied">Copied</string>
+    <string name="chat_snack_regen_last_only">Only the last reply can be regenerated</string>
+    <string name="chat_snack_resend_invalid">Cannot resend this message: it is empty, or it is not a user message</string>
+    <string name="chat_snack_deleted">Message deleted</string>
+    <string name="chat_snack_session_restored">Chat restored</string>
+    <string name="chat_note_user_denied_tool">(the user denied running this tool)</string>
+    <string name="chat_note_idle_stop">\n\n⚠ No streaming data for %1$d seconds, so generation stopped automatically; the reply above is what had arrived.</string>
+    <string name="chat_step_retry">⟳ Attempt %1$d/%2$d</string>
+    <string name="chat_step_retry_reason">Last attempt failed: %1$s; retrying after backoff</string>
+    <string name="chat_error_request_failed">\n⚠ Request failed: %1$s</string>
+
+    <!-- 没有可用模型的三种情形(分别指路) -->
+    <string name="chat_no_model_unpicked">⚠ No model selected yet\n\nTap the model chip above and pick one, then send.</string>
+    <string name="chat_no_model_unavailable">⚠ The current model is unavailable\n\nIt may have been deleted or lacks endpoint settings. Pick another model from the list.</string>
+    <string name="chat_no_model_none">⚠ No model available\n\nGo to Settings → Custom models, add an OpenAI-compatible endpoint, then pick it from the model list.\n(Official models need the gateway address configured at build time.)</string>
+
+    <!-- 任务上下文 -->
+    <string name="chat_ctx_repo_prefix">\n\nThe repository for this task: </string>
+
+    <!-- 无障碍:图标/字形按钮的读屏描述(可见文字无法表达用途时) -->
+    <string name="chat_cd_back">Back</string>
+    <string name="chat_cd_expand">Show details</string>
+    <string name="chat_cd_collapse">Collapse details</string>
+    <string name="chat_cd_clear_search">Clear search</string>
+    <string name="chat_cd_session_menu">Chat actions</string>
+    <string name="chat_cd_open_chat">Open chat</string>
+    <string name="chat_cd_composer_mention">Insert @ mention</string>
+    <string name="chat_cd_composer_file">Attach a file reference</string>
+</resources>

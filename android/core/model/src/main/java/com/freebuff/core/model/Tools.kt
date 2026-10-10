@@ -7,12 +7,16 @@ import org.json.JSONObject
  * 端侧工具注册表:让对话模型通过 function calling 调用 App 本地能力。
  *
  * 工具全部来自开源生态的公开协议,App 端真实执行(无需自建后端):
- * - GitHub REST API(github_search_repositories / github_get_file / github_get_readme)—— 匿名可读公开数据
+ * - GitHub REST API(github_* )—— 只读部分匿名可读公开数据;**写操作走已授权的 token**
  * - DuckDuckGo Instant Answer API(web_search)—— 免钥搜索
  * - 通用网页抓取(web_fetch)、本地计算(calculator)、本地时间(current_time)
  *
- * 设计对应 agent-architecture.md §1 的注册表思想:工具 = 名称 + 说明书 + 参数 Schema。
- * [toJsonObject] 产出 OpenAI 兼容 `tools` 字段;执行端(core/data ToolExecutors)按 name 分派。
+ * 设计对应 agent-architecture.md §1 的注册表思想:工具 = 名称 + 说明书 + 参数 Schema
+ * **+ 宿主元数据**([AgentTool.label] / [AgentTool.permission] / [AgentTool.route] / [AgentTool.caps])。
+ *
+ * 为什么元数据要跟定义放在一起(而不是各留一份手工清单):加一个工具过去要同时改 5 处
+ * (定义 / 权限默认 / 分派 / 展示标签 / 卡片),漏任何一处都是**静默缺陷**(模型能用但没标签、
+ * 或写了却永远弹确认)。现在这一个文件就是工具的全部声明,其余各处从这里派生。
  *
  * 说明书怎么写(来自 Anthropic《Writing effective tools for agents》与 MCP 工具设计规范,弱模型尤其吃这一套):
  * 1. **描述是给模型看的提示词**:做什么 → 何时用 → 何时**不用**(改用哪个)→ 返回什么 → 一句调用示例;
@@ -20,7 +24,9 @@ import org.json.JSONObject
  * 3. **数值给上下界**:limit/top_k 这类参数声明 min/max,模型不必猜;
  * 4. **只把「工具不能自己推断」的参数标为必填**:其余给默认值,减少模型编造;
  * 5. **参数名要能自解释**,同时容忍常见别名(弱模型常把 path 写成 file、query 写成 q);
- * 6. 说明书与 schema 每轮都随请求注入(见 [DefaultTools.toJsonArrayString]),不依赖模型记忆。
+ * 6. 说明书与 schema 每轮都随请求注入(见 [DefaultTools.toJsonArrayString]),不依赖模型记忆;
+ * 7. **多文件这类结构化入参用 array + itemFields**,让 schema 说出嵌套结构(拼成 JSON 字符串交给
+ *    弱模型自己转义,是实测最容易出错的一类参数)。
  */
 data class AgentTool(
     val name: String,
@@ -30,7 +36,20 @@ data class AgentTool(
     val params: List<Param> = emptyList(),
     /** 一句正确调用示例:写进 schema 描述与错误信封 —— 示例是说明书里最有价值的一行。 */
     val example: String = "",
+    /** 卡片与设置页显示的短名(空则回退工具名)。 */
+    val label: String = "",
+    /**
+     * 默认权限分级:只读/无副作用 = ALLOW;有写入或影响后续行为 = CONFIRM。
+     * 用户可在设置页覆写(见 [ToolPermissions.effective]);这里只声明默认值。
+     */
+    val permission: ToolPermission = ToolPermission.CONFIRM,
+    /** 执行归属:Data = core:data 的 [ToolExecutors];Host = 会话宿主(记忆仓库 / 子代理)。 */
+    val route: ToolRoute = ToolRoute.DATA,
+    /** 能力标签:计划模式剔除 [ToolCap.WRITE];关记忆剔除 [ToolCap.MEMORY]。 */
+    val caps: Set<ToolCap> = emptySet(),
 ) {
+    val isWrite: Boolean get() = ToolCap.WRITE in caps
+
     data class Param(
         val name: String,
         val type: String,
@@ -45,10 +64,23 @@ data class AgentTool(
         val default: String = "",
         /** 常见别名:一并接受并归一到规范名(降低弱模型的参数名门槛)。 */
         val aliases: List<String> = emptyList(),
+        /** array 元素的字段定义(type = "array" 时用;schema 里展开成 items 对象)。 */
+        val itemFields: List<Param> = emptyList(),
     ) {
         fun jsonSchema(): JSONObject = JSONObject().apply {
             put("type", type).put("description", desc)
             if (enum.isNotEmpty()) put("enum", JSONArray().apply { enum.forEach { put(it) } })
+            if (type == "array" && itemFields.isNotEmpty()) {
+                put(
+                    "items",
+                    JSONObject()
+                        .put("type", "object")
+                        .put("properties", JSONObject().apply {
+                            itemFields.forEach { f -> put(f.name, f.jsonSchema()) }
+                        })
+                        .put("required", JSONArray().apply { itemFields.filter { it.required }.forEach { put(it.name) } }),
+                )
+            }
             min?.let { put("minimum", it) }
             max?.let { put("maximum", it) }
             if (default.isNotBlank()) put("default", default)
@@ -79,6 +111,46 @@ data class AgentTool(
         )
 }
 
+/** 工具的执行归属(声明式:测试会断言每个 [ToolRoute.DATA] 工具都有真实分派,漏写会红)。 */
+enum class ToolRoute {
+    /** core:data 的 ToolExecutors(HTTP / 本地纯函数)。 */
+    DATA,
+
+    /** 会话宿主:需要仓库、会话与 UI 回调(记忆、子代理)。 */
+    HOST,
+}
+
+/**
+ * 会话宿主侧的 HOST 工具实现(单一分派入口的宿主回调)。
+ *
+ * 为什么要有这层契约:工具分派过去分两处 —— HTTP 类在 `core:data` 的 ToolExecutors,
+ * 记忆 / 子代理在 `feature:chat` 的 ChatViewModel —— 于是「新工具该写在哪」「权限 / 标签有没有漏登记」
+ * 全靠人记。现在只有**一个**执行入口([com.freebuff.core.data.tools.ToolExecutors.execute]):
+ * 它按注册表里的 [AgentTool.route] 分流 —— DATA 工具自己执行,HOST 工具回调本接口。
+ *
+ * 执行上下文(仓库、会话 id、Context、UI 回调)由宿主在实现本接口时闭包捕获:
+ * 执行器只认「一次工具调用 + 第几次失败」,不需要知道仓库与 UI 长什么样。
+ */
+interface ToolHost {
+    /**
+     * 执行一个 HOST 路由工具。
+     *
+     * @param call 原始工具调用(含 callId 与参数 JSON)
+     * @param attempt 同一工具在本轮会话里连续第几次失败(信封据此升级)
+     * @return 执行结果;返回 null 表示宿主不认识这个工具(执行器会回「未知工具」信封,不会静默成功)
+     */
+    suspend fun executeHostTool(call: ToolCallReq, attempt: Int): ToolOutcome?
+}
+
+/** 能力标签:按开关裁剪工具集(裁剪的是「模型看不到」,不是提示词约束)。 */
+enum class ToolCap {
+    /** 记忆类:设置页关掉「上下文记忆」时移除。 */
+    MEMORY,
+
+    /** 写操作:计划模式下物理移除(与后端 agent 运行时 plan 模式同构)。 */
+    WRITE,
+}
+
 /**
  * 默认工具集。名称与展示标签(toolDisplayName)对齐,未知工具回退原名显示。
  *
@@ -91,6 +163,8 @@ object DefaultTools {
     val ALL: List<AgentTool> = listOf(
         AgentTool(
             name = "web_search",
+            label = "联网搜索",
+            permission = ToolPermission.ALLOW,
             description = "联网搜索:关键词 → 主题摘要 + 相关条目(没搜到时会提示换词)。" +
                 "适合查事实、新闻、概念、最新动态。用户已经给出具体网址时不要用它,直接 web_fetch;" +
                 "要找公开仓库或读仓库里的文件、README 时,改用 github_search_repositories / github_get_readme / github_get_file。",
@@ -104,6 +178,8 @@ object DefaultTools {
         ),
         AgentTool(
             name = "web_fetch",
+            label = "抓取网页",
+            permission = ToolPermission.ALLOW,
             description = "抓取指定网址的正文(纯文本,截断到约 4000 字)。" +
                 "用户已经给出链接时直接用它,不要先搜索一遍;要先找链接才用 web_search。" +
                 "目标若是 GitHub 公开仓库里的文件或 README,改用 github_get_file / github_get_readme,不要自己拼 raw.githubusercontent.com 之类的链接。",
@@ -117,6 +193,8 @@ object DefaultTools {
         ),
         AgentTool(
             name = "github_search_repositories",
+            label = "搜索仓库",
+            permission = ToolPermission.ALLOW,
             description = "在 GitHub 搜公开仓库(名称/星数/语言/简介)。" +
                 "读某个仓库的文件或 README 之前,先用它确认仓库名拼写正确。",
             example = "github_search_repositories({\"query\": \"compose multiplatform\", \"limit\": 5})",
@@ -133,9 +211,11 @@ object DefaultTools {
         ),
         AgentTool(
             name = "github_get_file",
-            description = "读 GitHub 公开仓库里的某个文件(纯文本,截断到约 4000 字)。" +
+            label = "读取文件",
+            permission = ToolPermission.ALLOW,
+            description = "读 GitHub 仓库里的某个文件(纯文本,截断到约 4000 字)。" +
                 "owner 与 repo 要分开写,path 是仓库内的相对路径;只想读 README 时用 github_get_readme。" +
-                "不要用 web_fetch 拼 raw 链接代替它。",
+                "已连接 Git 账号时可读私有仓库,否则只能读公开仓库。不要用 web_fetch 拼 raw 链接代替它。",
             example = "github_get_file({\"owner\": \"CodebuffAI\", \"repo\": \"freebuff\", \"path\": \"README.md\"})",
             params = listOf(
                 AgentTool.Param(
@@ -158,7 +238,9 @@ object DefaultTools {
         ),
         AgentTool(
             name = "github_get_readme",
-            description = "读 GitHub 公开仓库的 README 全文(截断)。" +
+            label = "读取 README",
+            permission = ToolPermission.ALLOW,
+            description = "读 GitHub 仓库的 README 全文(截断)。" +
                 "知道仓库但不确定里面有哪些文件时,先用它了解项目;" +
                 "用户问某个仓库的 README 或项目介绍时一律用它,即使对方给了 raw 链接或网页链接,也不要用 web_fetch 代替。",
             example = "github_get_readme({\"owner\": \"CodebuffAI\", \"repo\": \"freebuff\"})",
@@ -174,7 +256,143 @@ object DefaultTools {
             ),
         ),
         AgentTool(
+            name = "github_list_branches",
+            label = "列分支",
+            permission = ToolPermission.ALLOW,
+            description = "列出 GitHub 仓库的分支(名称 + 最近提交)。" +
+                "要提交代码前先用它确认目标分支名与默认分支,别凭记忆猜 main/master。" +
+                "需要一个「新分支从哪来」的起点时也看这里的返回值。",
+            example = "github_list_branches({\"owner\": \"CodebuffAI\", \"repo\": \"freebuff\", \"limit\": 30})",
+            params = listOf(
+                AgentTool.Param(
+                    "owner", "string", "仓库所有者(账号或组织名)",
+                    aliases = listOf("user", "org", "organization", "账号"),
+                ),
+                AgentTool.Param(
+                    "repo", "string", "仓库名",
+                    aliases = listOf("repository", "project", "仓库", "仓库名"),
+                ),
+                AgentTool.Param(
+                    "limit", "integer", "返回条数", required = false,
+                    min = 1, max = 100, default = "30",
+                ),
+            ),
+        ),
+        AgentTool(
+            name = "github_create_branch",
+            label = "新建分支",
+            permission = ToolPermission.CONFIRM,
+            caps = setOf(ToolCap.WRITE),
+            description = "在 GitHub 仓库里新建一个分支(从 from 指向的已有分支拉出,from 不填用仓库默认分支)。" +
+                "改代码的标准流程:先建分支 → github_commit_files 提交 → github_create_pull_request 开 PR。" +
+                "**不要**直接往默认分支提交。分支已存在会返回冲突,换一个名字即可。",
+            example = "github_create_branch({\"owner\": \"me\", \"repo\": \"notes\", \"branch\": \"agent/fix-typo\"})",
+            params = listOf(
+                AgentTool.Param(
+                    "owner", "string", "仓库所有者(账号或组织名)",
+                    aliases = listOf("user", "org", "organization", "账号"),
+                ),
+                AgentTool.Param(
+                    "repo", "string", "仓库名",
+                    aliases = listOf("repository", "project", "仓库", "仓库名"),
+                ),
+                AgentTool.Param(
+                    "branch", "string", "要新建的分支名(不含空格;如 agent/fix-typo)",
+                    aliases = listOf("name", "new_branch", "分支", "分支名"),
+                ),
+                AgentTool.Param(
+                    "from", "string", "从哪个已有分支拉出;不填用仓库默认分支", required = false,
+                    aliases = listOf("base", "from_branch", "source", "源分支"),
+                ),
+            ),
+        ),
+        AgentTool(
+            name = "github_commit_files",
+            label = "提交文件",
+            permission = ToolPermission.CONFIRM,
+            caps = setOf(ToolCap.WRITE),
+            description = "一次调用提交一个或多个文件到指定分支(同一提交,原子生效);" +
+                "branch 必须已存在(先用 github_create_branch 建分支)。content 是文件全文 —— " +
+                "改已有文件要先 github_get_file 读到原文再整篇改写,不要只写片段。" +
+                "提交信息用一句话说清改了什么。",
+            example = "github_commit_files({\"owner\": \"me\", \"repo\": \"notes\", \"branch\": \"agent/fix-typo\", " +
+                "\"message\": \"fix: 修正 README 拼写\", \"files\": [{\"path\": \"README.md\", \"content\": \"# 标题\\n\"}]})",
+            params = listOf(
+                AgentTool.Param(
+                    "owner", "string", "仓库所有者(账号或组织名)",
+                    aliases = listOf("user", "org", "organization", "账号"),
+                ),
+                AgentTool.Param(
+                    "repo", "string", "仓库名",
+                    aliases = listOf("repository", "project", "仓库", "仓库名"),
+                ),
+                AgentTool.Param(
+                    "branch", "string", "目标分支(必须已存在)",
+                    aliases = listOf("ref", "分支", "分支名"),
+                ),
+                AgentTool.Param(
+                    "message", "string", "提交信息:一句话说清改了什么",
+                    aliases = listOf("commit_message", "msg", "提交信息"),
+                ),
+                AgentTool.Param(
+                    "files", "array", "要提交的文件列表:path 为仓库内相对路径,content 为完整内容",
+                    itemFields = listOf(
+                        AgentTool.Param(
+                            "path", "string", "仓库内相对路径,如 src/main.rs",
+                            aliases = listOf("file", "filename", "文件", "文件路径"),
+                        ),
+                        AgentTool.Param(
+                            "content", "string", "文件完整内容(文本)",
+                            aliases = listOf("text", "body", "内容"),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        AgentTool(
+            name = "github_create_pull_request",
+            label = "开 PR",
+            permission = ToolPermission.CONFIRM,
+            caps = setOf(ToolCap.WRITE),
+            description = "用 head 分支向 base 分支开一个 Pull Request(改代码流程的最后一步)。" +
+                "head 必须先有提交,否则会返回「没有差异」类错误。title 一句话说清这个 PR 做了什么;" +
+                "body 可写改动说明与验证方式。返回 PR 链接。",
+            example = "github_create_pull_request({\"owner\": \"me\", \"repo\": \"notes\", \"head\": \"agent/fix-typo\", " +
+                "\"base\": \"main\", \"title\": \"fix: 修正 README 拼写\"})",
+            params = listOf(
+                AgentTool.Param(
+                    "owner", "string", "仓库所有者(账号或组织名)",
+                    aliases = listOf("user", "org", "organization", "账号"),
+                ),
+                AgentTool.Param(
+                    "repo", "string", "仓库名",
+                    aliases = listOf("repository", "project", "仓库", "仓库名"),
+                ),
+                AgentTool.Param(
+                    "head", "string", "源分支(你的改动所在分支)",
+                    aliases = listOf("source", "from", "源分支"),
+                ),
+                AgentTool.Param(
+                    "base", "string", "目标分支(通常是 main/master)",
+                    aliases = listOf("target", "into", "目标分支"),
+                ),
+                AgentTool.Param(
+                    "title", "string", "PR 标题:一句话说清做了什么",
+                    aliases = listOf("name", "标题"),
+                ),
+                AgentTool.Param(
+                    "body", "string", "PR 说明:改了什么、怎么验证", required = false,
+                    aliases = listOf("description", "说明", "描述"),
+                ),
+                AgentTool.Param(
+                    "draft", "boolean", "true = 先开草稿 PR", required = false, default = "false",
+                ),
+            ),
+        ),
+        AgentTool(
             name = "calculator",
+            label = "计算器",
+            permission = ToolPermission.ALLOW,
             description = "精确计算算术表达式(支持 + - * / 与括号)。数字计算一律用它,不要自己心算。",
             example = "calculator({\"expression\": \"(12+8)*3.5\"})",
             params = listOf(
@@ -186,11 +404,17 @@ object DefaultTools {
         ),
         AgentTool(
             name = "current_time",
+            label = "当前时间",
+            permission = ToolPermission.ALLOW,
             description = "取设备当前的日期与时间(含星期)。问到「现在/今天」时先调它,不要凭记忆猜日期。",
             example = "current_time({})",
         ),
         AgentTool(
             name = "save_memory",
+            label = "保存记忆",
+            permission = ToolPermission.CONFIRM,
+            route = ToolRoute.HOST,
+            caps = setOf(ToolCap.MEMORY),
             description = "更新核心记忆块(跨会话长期生效)。" +
                 "用户说「记住…」「以后都…」「别忘…」时必须调用它(这一步最容易漏),不要只在回复里答应。" +
                 "只记用户明确说出或确认过的信息。" +
@@ -207,29 +431,11 @@ object DefaultTools {
             ),
         ),
         AgentTool(
-            name = Subagent.TOOL_NAME,
-            description = "派一个只读子代理独立完成子任务(联网调研/读公开仓库/纯计算),它有独立上下文与工具循环,只回结论。" +
-                "适合可并行、自成一体的调研或读取;简单的一步调用别用它。task 必须自包含(它看不到当前对话)。",
-            example = "spawn_subagent({\"agent_type\": \"researcher\", \"task\": \"查 compose 1.8 的主要新特性\"})",
-            params = listOf(
-                AgentTool.Param(
-                    "agent_type", "string", "子代理类型",
-                    enum = listOf("researcher", "code_reader", "analyst"),
-                ),
-                AgentTool.Param("task", "string", "子任务目标:一句话、自包含(子代理看不到当前对话)"),
-                AgentTool.Param("context", "string", "主 agent 认为必要的最小背景摘录", required = false),
-                AgentTool.Param("expected_output", "string", "期望产出形态,如 ≤200 字结论 + 来源列表", required = false),
-            ),
-        ),
-        AgentTool(
-            name = AgentLoop.COMPLETION_TOOL,
-            description = "声明任务完成:确认目标真正达成后才调用,summary 写清做了什么、关键结果与遗留事项。" +
-                "调用后本次循环结束。多步任务在完成前不要用它;也不要只是描述了计划就停。",
-            example = "task_completed({\"summary\": \"已查出当前时间并汇报给用户;无遗留\"})",
-            params = listOf(AgentTool.Param("summary", "string", "完成情况:做了什么 + 关键结果 + 遗留事项")),
-        ),
-        AgentTool(
             name = "memory_recall",
+            label = "检索记忆",
+            permission = ToolPermission.ALLOW,
+            route = ToolRoute.HOST,
+            caps = setOf(ToolCap.MEMORY),
             description = "按查询检索历史记忆(Top K 条)。回答涉及用户偏好、过往约定、任务进度、以前提供过的事实时,先调它;" +
                 "没检索到也可以再问用户。它负责读,save_memory 负责写,别互相替代。" +
                 "user_id 填系统提示里给出的当前用户 id。",
@@ -250,18 +456,57 @@ object DefaultTools {
                 ),
             ),
         ),
+        AgentTool(
+            name = Subagent.TOOL_NAME,
+            label = "派出子代理",
+            permission = ToolPermission.ALLOW,
+            route = ToolRoute.HOST,
+            description = "派一个只读子代理独立完成子任务(联网调研/读公开仓库/纯计算),它有独立上下文与工具循环,只回结论。" +
+                "适合可并行、自成一体的调研或读取;简单的一步调用别用它。task 必须自包含(它看不到当前对话)。",
+            example = "spawn_subagent({\"agent_type\": \"researcher\", \"task\": \"查 compose 1.8 的主要新特性\"})",
+            params = listOf(
+                AgentTool.Param(
+                    "agent_type", "string", "子代理类型",
+                    enum = listOf("researcher", "code_reader", "analyst"),
+                ),
+                AgentTool.Param("task", "string", "子任务目标:一句话、自包含(子代理看不到当前对话)"),
+                AgentTool.Param("context", "string", "主 agent 认为必要的最小背景摘录", required = false),
+                AgentTool.Param("expected_output", "string", "期望产出形态,如 ≤200 字结论 + 来源列表", required = false),
+            ),
+        ),
+        AgentTool(
+            name = AgentLoop.COMPLETION_TOOL,
+            label = "任务完成",
+            permission = ToolPermission.ALLOW,
+            description = "声明任务完成:确认目标真正达成后才调用,summary 写清做了什么、关键结果与遗留事项。" +
+                "调用后本次循环结束。多步任务在完成前不要用它;也不要只是描述了计划就停。",
+            example = "task_completed({\"summary\": \"已查出当前时间并汇报给用户;无遗留\"})",
+            params = listOf(AgentTool.Param("summary", "string", "完成情况:做了什么 + 关键结果 + 遗留事项")),
+        ),
     )
 
     /** 记忆能力相关工具:设置页「上下文记忆」关闭时整体移除(模型不应看到不可用的工具)。 */
-    private val MEMORY_TOOLS = setOf("save_memory", "memory_recall")
+    val MEMORY_TOOLS: Set<String> = ALL.filter { ToolCap.MEMORY in it.caps }.map { it.name }.toSet()
+
+    /** 写工具:计划模式下整体移除(与后端 plan 模式同构 —— 不靠提示词自觉)。 */
+    val WRITE_TOOLS: Set<String> = ALL.filter { it.isWrite }.map { it.name }.toSet()
 
     /** 序列化为 OpenAI 兼容 `tools` 数组字符串(直接放进请求体)。 */
     fun toJsonArrayString(tools: List<AgentTool> = ALL): String =
         JSONArray().apply { tools.forEach { put(it.toJsonObject()) } }.toString()
 
-    /** 按开关过滤的工具集:记忆关闭时移除记忆类工具(save_memory / memory_recall)。 */
-    fun forCapabilities(memory: Boolean): List<AgentTool> =
-        if (memory) ALL else ALL.filter { it.name !in MEMORY_TOOLS }
+    /**
+     * 按开关过滤的工具集。
+     *
+     * @param memory 上下文记忆开关(关闭时移除 [ToolCap.MEMORY] 工具)
+     * @param planMode 计划模式(开启时移除 [ToolCap.WRITE] 工具:模型根本看不到写入口)
+     */
+    fun forCapabilities(memory: Boolean = true, planMode: Boolean = false): List<AgentTool> = ALL.filter { t ->
+        (memory || ToolCap.MEMORY !in t.caps) && (!planMode || !t.isWrite)
+    }
+
+    /** 按执行归属取工具(执行器覆盖度测试用:每个 DATA 工具都必须有真实分派)。 */
+    fun ofRoute(route: ToolRoute): List<AgentTool> = ALL.filter { it.route == route }
 
     /** 按名字查工具(校验与错误信封要给模型参数清单/示例,都需要它)。 */
     fun find(name: String, tools: List<AgentTool> = ALL): AgentTool? = tools.firstOrNull { it.name == name }
@@ -308,6 +553,7 @@ object DefaultTools {
                 "boolean" -> if (asBool(raw) == null) {
                     problems += ToolErrors.ArgProblem.Type(p.name, raw.toString().take(40), "布尔(true/false)")
                 }
+                "array" -> problems += validateArray(p, raw)
                 else -> {
                     if (p.enum.isNotEmpty() && p.enum.none { it.equals(raw.toString().trim(), ignoreCase = true) }) {
                         problems += ToolErrors.ArgProblem.Enum(p.name, raw.toString().trim().take(40), p.enum)
@@ -319,8 +565,43 @@ object DefaultTools {
     }
 
     /**
-     * 参数归一:别名 → 规范名、字符串数字 → 整数、"True"/"1" → 布尔、枚举大小写对齐,
-     * 丢掉没给值的可选参数(执行器用默认值)。
+     * array 参数体检:必须是数组,且每个元素是按 [AgentTool.Param.itemFields] 声明的对象。
+     * 元素里的问题用 `files[0].path` 这种定位写法报出来 —— 「哪个元素的哪个字段」比
+     * 一句「files 不合法」有用得多(多文件提交是弱模型最常写错的一类参数)。
+     */
+    private fun validateArray(p: AgentTool.Param, raw: Any?): List<ToolErrors.ArgProblem> {
+        val arr = raw as? JSONArray
+            ?: return listOf(ToolErrors.ArgProblem.Type(p.name, raw.toString().take(40), "数组"))
+        if (arr.length() == 0) {
+            return listOf(ToolErrors.ArgProblem.Missing(p.name + "[](至少一个文件)"))
+        }
+        val problems = mutableListOf<ToolErrors.ArgProblem>()
+        for (i in 0 until arr.length()) {
+            val el = arr.optJSONObject(i)
+            if (el == null) {
+                problems += ToolErrors.ArgProblem.Type(p.name + "[" + i + "]", arr.opt(i).toString().take(40), "对象")
+                continue
+            }
+            el.keys().forEach { k ->
+                if (p.itemFields.none { it.name == k || it.aliases.any { a -> a.equals(k, ignoreCase = true) } }) {
+                    problems += ToolErrors.ArgProblem.Unknown(p.name + "[" + i + "]." + k)
+                }
+            }
+            p.itemFields.forEach { f ->
+                val v = el.opt(f.name) ?: f.aliases.firstNotNullOfOrNull { a ->
+                    el.keys().asSequence().firstOrNull { it.equals(a, ignoreCase = true) }?.let { el.opt(it) }
+                }
+                if (isAbsent(v) && f.required) {
+                    problems += ToolErrors.ArgProblem.Missing(p.name + "[" + i + "]." + f.name)
+                }
+            }
+        }
+        return problems
+    }
+
+    /**
+     * 参数归一:别名 → 规范名、字符串数字 → 整数、"True"/"1" → 布尔、枚举大小写对齐、
+     * array 元素字段同规则归一并丢掉没给值的可选参数(执行器用默认值)。
      * 归一与校验分开:归一的结果同时给执行器和信封用,信封里的「正确调用示例」才对得上实际行为。
      */
     fun normalize(tool: AgentTool, args: JSONObject): JSONObject {
@@ -331,6 +612,17 @@ object DefaultTools {
             when (p.type) {
                 "integer" -> asInt(raw)?.let { out.put(p.name, it) }
                 "boolean" -> asBool(raw)?.let { out.put(p.name, it) }
+                "array" -> (raw as? JSONArray)?.let { arr ->
+                    out.put(
+                        p.name,
+                        JSONArray().apply {
+                            for (i in 0 until arr.length()) {
+                                val el = arr.optJSONObject(i) ?: continue
+                                put(normalizeItem(p, el))
+                            }
+                        },
+                    )
+                }
                 else -> {
                     val s = raw as? String ?: raw.toString()
                     val trimmed = s.trim()
@@ -338,6 +630,19 @@ object DefaultTools {
                     out.put(p.name, canon ?: trimmed)
                 }
             }
+        }
+        return out
+    }
+
+    /** array 元素的归一同上(别名 → 规范名,字符串去空白),只保留声明过的字段。 */
+    private fun normalizeItem(p: AgentTool.Param, el: JSONObject): JSONObject {
+        val out = JSONObject()
+        p.itemFields.forEach { f ->
+            val v = el.opt(f.name) ?: f.aliases.firstNotNullOfOrNull { a ->
+                el.keys().asSequence().firstOrNull { it.equals(a, ignoreCase = true) }?.let { el.opt(it) }
+            }
+            if (isAbsent(v)) return@forEach
+            out.put(f.name, (v as? String)?.trim() ?: v)
         }
         return out
     }

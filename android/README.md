@@ -38,21 +38,38 @@ android/
 ## 已实现(对应原型功能)
 - **双主题**:深色默认、浅色、跟随系统;欢迎页 Logo 点击可循环切换
 - **会话**:首页列表 + 新建/删除/清空;对话页**真实 SSE 流式对话**(OpenAI 兼容端点,逐段写回消息)+ 代码块 + 上下文胶囊
+- **中英双语与无障碍**:界面文案进入各模块 `res/values/`(默认英文)与 `values-zh/`(中文),跟随系统语言;
+  纯字形按钮(返回 `‹`/清空 `✕`/会话菜单 `⋯`/发起任务 `+`/模型芯片等)补齐 `contentDescription`,TalkBack 可读。
+  规则、不翻译的边界与验证脚本见 [docs/i18n-and-accessibility.md](docs/i18n-and-accessibility.md)
+  (设置页文案仍在迁移中,详见该文档 §5)
 - **发起任务向导**:三步(仓库 → 模型 → 描述);仓库支持不关联 / 手动输入(平台快捷粘贴、git clone 解析、
   分支胶囊、协议补全)/ **Git 账号真实仓库**(GitHub 设备流);官方与自定义模型分组展示
+- **消息级操作**:每条消息一行操作(复制 / 编辑 / 删除),最后一条回复多一个**重新生成**;
+  编辑用户消息在气泡内就地改写并重发 —— 发送前明示「会丢弃其后的 N 条消息」;单条删除二次确认。
+  三条入口与「发送」共用同一个 agent 循环,规则是 `core:model.MessageOps` 纯函数(见 [docs/backend-integration.md](docs/backend-integration.md) §3.3.9)
+- **长任务后台保活**:一次对话开始时启动前台服务(`dataSync` 类型),**切走或锁屏后多轮任务继续跑完**;
+  运行中一条低优先级静音常驻通知显示当前轮次与在调用的工具,结束时撤下,并按结果发一条可点回的完成通知
+  (跑完/失败各一种文案,用户主动停止则不再打扰)。通知权限(API 33+)被拒不影响功能,
+  实现与边界见 [docs/backend-integration.md](docs/backend-integration.md) §3.3.8
+- **工具调用**:11 个端侧工具(联网搜索/抓取、GitHub 搜索与读文件/README、计算器、当前时间、核心记忆读写、子代理派发)+
+  逐工具三级权限(免确认/需确认/禁止)、参数体检、带处方的错误信封、重复调用复用与连败熔断
 - **设置**:外观(主题三档)、模型(当前模型 → 选择模型)、集成(Git 账号 / 仓库地址解析严格↔宽松 / 自定义模型)、
   会话与数据(数据本机说明 + **二次确认**清除全部会话)、关于(说明弹层 / 版本检查 / 官方网站 / 反馈与建议)
 - **自定义模型**:添加/编辑表单(Base URL 实时预览完整请求路径、中转站直接粘贴、密钥显示切换、TLS 开关、
   请求头、**真实测试连接** → `/v1/models` 可用列表点选、快照随记录保存、从快照重建);列表行展示完整请求路径与
   「上次可用 N 个模型」快照展开区(模型行状态点:上次连通时间与延迟 + 就地重新测试连接);
   启动自动清洗损坏记录并展示「已自动修复」报告(逐条差异 + 二次确认恢复原始记录,仅会话内)
-- **官方模型目录**:启动时从网关 `GET /v1/models` 实时拉取,失败或未配置时回退内置目录(模型面板可手动刷新)
+- **端侧子代理**:`spawn_subagent` 在端上**真执行** —— 派一个只读子代理(researcher 联网调研 / code_reader 读公开仓库 /
+  analyst 纯计算),它有自己的上下文与工具白名单、最多 3 轮工具,之后强制收敛成结论;结论压缩后回填主循环,
+  卡片显示实时尾部(实现与边界见 [docs/subagent-design.md](docs/subagent-design.md) §12)
 - **数据**:Room 持久化 + 一次性 SharedPreferences 迁移(`freebuff_proto_v1`,带 `migrated_v2` 完成标志,
   **迁移只执行一次**——清空会话后重启不会复活演示会话,旧偏好也不会覆盖后来的修改);API Key 与 Git token 经 Keystore 加密
 
 ## 后端接入(网络层与错误处理)
 
 完整接口/错误分类/回退策略见 **[docs/backend-integration.md](docs/backend-integration.md)**。
+
+多语言与无障碍(文案归属、`contentDescription` 约定、完整性检查)见 **[docs/i18n-and-accessibility.md](docs/i18n-and-accessibility.md)**。
 
 后端 agent 运行时的行为参考(工具注册表、工具调用执行管线、agent 双层循环、事件流契约)见 **[docs/agent-architecture.md](docs/agent-architecture.md)**——对接完整 agent 会话流时,事件类型与渲染语义以此为准。
 
@@ -95,6 +112,12 @@ scripts/gradle.sh :app:assembleRelease
 
 # 单元测试(model + data)
 scripts/gradle.sh :core:model:test :core:data:testDebugUnitTest
+
+# 翻译完整性(默认语言与各 locale 的 key/格式参数必须一致)
+python scripts/check-translations.py
+
+# 有没有把中文写死在 Kotlin 里(与基线比数量,新增一处即失败;--update 收紧)
+python scripts/check-hardcoded-strings.py
 ```
 
 | 变体 | 大小 | 说明 |

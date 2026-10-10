@@ -33,6 +33,13 @@ object Subagent {
     /** 子代理循环内工具执行的最大轮数。 */
     const val MAX_TOOL_ROUNDS = 3
 
+    /**
+     * 一次子代理最多发起的 LLM 请求数(兜底上限)。
+     * 正常路径是「工具轮数用尽 → 去掉 tools 收敛一次 → 拿到结论」,即 MAX_TOOL_ROUNDS + 1;
+     * 余量留给模型空回复等异常,避免任何情况下出现无界循环。
+     */
+    const val MAX_REQUESTS = MAX_TOOL_ROUNDS + 2
+
     /** 子代理类型:剧本名。 */
     const val TYPE_RESEARCHER = "researcher"
     const val TYPE_CODE_READER = "code_reader"
@@ -69,17 +76,24 @@ object Subagent {
         }
     }
 
-    /** 一次子代理委托(解析后的参数)。 */
+    /**
+     * 一次子代理委托(解析后的参数)。context 与 expected_output 在工具 schema 里都是可选的,
+     * 缺省即空串(与 [parseRequest] 的取值一致)。
+     */
     data class Request(
         val type: String,
         val task: String,
-        val context: String,
-        val expectedOutput: String,
+        val context: String = "",
+        val expectedOutput: String = "",
     )
 
-    /** 子代理的 system 剧本:身份目标 + 工作方式 + 硬性约束 + 输出格式四段。 */
-    fun systemPrompt(type: String): String {
-        val tools = TOOL_WHITELIST[type].orEmpty().joinToString("、")
+    /**
+     * 子代理的 system 剧本:身份目标 + 工作方式 + 硬性约束 + 输出格式四段。
+     * @param toolNames 实际可用的工具名 —— 由执行引擎按权限过滤后传入(用户把某工具设成
+     *   需确认/禁止时,子代理的工具清单里就不该再有它,剧本也要跟着说实情)
+     */
+    fun systemPrompt(type: String, toolNames: List<String> = TOOL_WHITELIST[type].orEmpty().toList()): String {
+        val tools = toolNames.joinToString("、")
         return buildString {
             appendLine("你是主 agent 派出的子代理,类型 $type,只负责完成被委托的单个子任务,不与用户直接对话。")
             appendLine("可用工具:$tools。围绕子任务少量多次地使用工具(最多 $MAX_TOOL_ROUNDS 轮),不要做子任务之外的探索。")
@@ -102,13 +116,24 @@ object Subagent {
     }
 
     /**
-     * 占位分派回填(P0 收敛为协议层,执行引擎未上线):主循环识别到 spawn_subagent 调用时
-     * 不执行、不弹权限确认,直接回填本说明 —— 无副作用,同时让模型提前熟悉该工具的调用形态,
-     * P1 执行引擎上线后无缝切换,无需改提示词。
+     * 子代理结论回填主循环的格式:带来源标签(类型/轮数/用过的工具),让主模型知道
+     * 这段文字来自一个只读子代理、以及它是靠什么得来的 —— 主模型据此决定是否需要复核。
      */
-    fun comingSoonMessage(): String =
-        "spawn_subagent 尚未上线:本次调用未执行,子代理功能正在开发中。请直接基于当前上下文完成该子任务;" +
-            "如需外部信息,可自行使用 web_search / web_fetch 分步完成。"
+    fun formatResult(type: String, rounds: Int, toolsUsed: List<String>, text: String): String = buildString {
+        append("[子代理 ").append(type).append(" 完成")
+        if (rounds > 0) append(" · ").append(rounds).append(" 轮工具")
+        if (toolsUsed.isNotEmpty()) append(" · ").append(toolsUsed.joinToString("、"))
+        append("]\n").append(text.trim())
+    }
+
+    /**
+     * 子代理失败回填:说清这一路没有结果,**并给主模型自己的替代路径** ——
+     * 失败不该让主循环原地重派同一个子代理。
+     */
+    fun formatFailure(type: String, reason: String): String =
+        "[子代理 " + type + " 未能完成] " + reason.take(200) +
+            "\n怎么改: 这一路没有产出。改用 web_search / web_fetch / github_get_* 分步自行完成," +
+            "或直接告知用户这部分暂时拿不到结果。"
 
     /** spawn_subagent 参数缺失/非法时给主模型的可修正错误文案。 */
     fun invalidArgsMessage(argsJson: String): String =

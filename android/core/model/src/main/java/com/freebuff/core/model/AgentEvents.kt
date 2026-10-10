@@ -81,8 +81,14 @@ data class ToolCard(
     }
 }
 
-/** 常见工具的展示名(与 agent-architecture.md §1 工具注册表对应);未收录显示原名。 */
-private val TOOL_LABELS: Map<String, String> = mapOf(
+/**
+ * 常见工具的展示名。
+ *
+ * 分两层:端侧**已实现**的工具直接读注册表([AgentTool.label]) —— 加工具时只改 `Tools.kt`,标签跟着走;
+ * 下面这张表服务**后端 agent 运行时**的工具名(agent-architecture.md §1.1 的 36 个,端侧还没实现),
+ * 属于远端会话事件流里的展示名;两处同名时注册表优先。
+ */
+private val BACKEND_TOOL_LABELS: Map<String, String> = mapOf(
     "read_files" to "读取文件",
     "read_subtree" to "读取目录树",
     "list_directory" to "列目录",
@@ -114,27 +120,28 @@ private val TOOL_LABELS: Map<String, String> = mapOf(
     "github_get_readme" to "读取 README",
     "calculator" to "计算器",
     "current_time" to "当前时间",
-    "save_memory" to "保存记忆",
-    "memory_recall" to "检索记忆",
-    "spawn_subagent" to "派出子代理",
     "end_turn" to "结束回合",
     "ask_user" to "等待输入",
     "suggest_followups" to "推荐后续",
     "set_output" to "设置输出",
-    "web_search" to "联网搜索",
     "browser_logs" to "浏览器日志",
     "skill" to "调用技能",
     "gravity_index" to "代码索引",
 )
 
-fun toolDisplayName(tool: String): String = TOOL_LABELS[tool] ?: tool
+/** 展示名:注册表(端侧已实现)优先,其次后端工具名表,最后回退原名。 */
+fun toolDisplayName(tool: String): String =
+    DefaultTools.find(tool)?.label?.takeIf { it.isNotBlank() } ?: BACKEND_TOOL_LABELS[tool] ?: tool
 
 /** 工具图标:按类别取字形,未识别用通用齿轮。 */
 fun toolGlyph(tool: String): String = when (tool) {
     "read_files", "read_subtree", "list_directory", "glob", "find_files", "read_docs" -> "▤"
     "code_search", "web_search", "gravity_index" -> "⌕"
     "read_url", "web_fetch" -> "⌘"
-    "github_search_repositories", "github_get_file", "github_get_readme" -> "⌥"
+    "github_search_repositories", "github_get_file", "github_get_readme", "github_list_branches" -> "⌥"
+    "github_create_branch" -> "⑂"
+    "github_commit_files" -> "✎"
+    "github_create_pull_request" -> "⇪"
     "save_memory" -> "❖"
     "memory_recall" -> "❒"
     "write_file", "str_replace", "apply_patch", "propose_write_file", "propose_str_replace" -> "✎"

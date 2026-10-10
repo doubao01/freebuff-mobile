@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="model_chip_empty">选择模型</string>
+    <string name="cd_model_picker">选择模型</string>
+</resources>

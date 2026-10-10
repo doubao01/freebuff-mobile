@@ -21,6 +21,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 /** 会话列表页:读取会话流,支持按标题/预览搜索,打开/删除(可撤销)。 */
@@ -31,6 +33,7 @@ class HomeViewModel @Inject constructor(
     private val catalog: ModelCatalogRepository,
     private val settings: SettingsRepository,
     private val navigator: AppNavigator,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     /** 首页模型胶囊显示的当前模型名(官方网关实时 + 自定义);未选择时为空串。 */
@@ -99,7 +102,7 @@ class HomeViewModel @Inject constructor(
         undoTimer?.cancel()
         viewModelScope.launch {
             sessionRepo.restore(snapshot)
-            navigator.showSnack("已恢复会话")
+            navigator.showSnack(context.getString(R.string.chat_snack_session_restored))
         }
     }
 

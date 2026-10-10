@@ -1,4 +1,38 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  app 模块的界面文案(默认语言 = 英文,Android 惯例:values/ 是所有未匹配语言的兜底)。
+  中文放在 values-zh/strings.xml,设备语言为中文时自动生效。
+-->
 <resources>
-    <string name="app_name">Freebuff Mobile</string>
+    <string name="app_name" translatable="false">Freebuff Mobile</string>
+
+    <!-- 底部标签栏 -->
+    <string name="tab_sessions">Chats</string>
+    <string name="tab_settings">Settings</string>
+
+    <!-- 无障碍描述:图标按钮(没有可见文字,必须自己说明用途) -->
+    <string name="cd_new_task">Start a new task</string>
+
+    <!-- 上次异常退出横幅 -->
+    <string name="crash_banner_title">Last run crashed — copy the report to help fix it</string>
+    <string name="crash_banner_dismiss">Ignore</string>
+    <string name="crash_banner_copy">Copy stack trace</string>
+    <string name="crash_stack_copied">Crash log copied — paste it to the developer</string>
+
+    <!--
+      长任务通知。会话名与回复正文是用户自己的内容,不翻译;
+      这里只翻「外壳」（固定说法 + 渠道名）。
+    -->
+    <string name="notify_channel_running">Generating</string>
+    <string name="notify_channel_running_desc">Ongoing status while a reply is being generated</string>
+    <string name="notify_channel_done">Reply finished</string>
+    <string name="notify_channel_done_desc">Alert when a reply finishes or fails</string>
+    <string name="notify_running">Generating</string>
+    <string name="notify_connecting">Connecting to the model…</string>
+    <string name="notify_connecting_model">Connecting to %1$s…</string>
+    <string name="notify_done_ok">Reply finished</string>
+    <string name="notify_done_fail">This turn did not finish</string>
+
+    <!-- 通知权限被拒时的提示（不阻断功能） -->
+    <string name="notify_permission_denied">Notifications are off: the task still runs in the background, but you will not be alerted when it finishes</string>
 </resources>

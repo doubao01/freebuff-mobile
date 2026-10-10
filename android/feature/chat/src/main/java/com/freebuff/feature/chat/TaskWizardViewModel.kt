@@ -27,6 +27,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.concurrent.atomic.AtomicBoolean
+import android.content.Context
+import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 
 /**
@@ -41,6 +43,8 @@ class TaskWizardViewModel @Inject constructor(
     private val gitAuth: GitAuthRepository,
     private val settings: SettingsRepository,
     private val navigator: AppNavigator,
+    // 提示条文案在多语言下要跟着系统语言走;ViewModel 只能靠注入的 Context 读资源
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _draft = MutableStateFlow(TaskDraft())
@@ -130,7 +134,12 @@ class TaskWizardViewModel @Inject constructor(
                     else -> true
                 }
                 if (ok) _draft.update { it.copy(step = 1) }
-                else navigator.showSnack(if (d.repoMode == "git") "请先选择一个仓库" else "仓库地址不完整")
+                else navigator.showSnack(
+                    context.getString(
+                        if (d.repoMode == "git") R.string.chat_wizard_err_no_repo
+                        else R.string.chat_wizard_err_repo_incomplete,
+                    ),
+                )
             }
             else -> _draft.update { it.copy(step = (it.step + 1).coerceAtMost(2)) }
         }
@@ -143,11 +152,11 @@ class TaskWizardViewModel @Inject constructor(
     fun launch(onLaunched: (sessionId: String, desc: String, ctxRepo: String, ctxModel: String) -> Unit) {
         val d = _draft.value
         if (d.desc.isBlank()) {
-            navigator.showSnack("请先描述任务")
+            navigator.showSnack(context.getString(R.string.chat_wizard_err_no_desc))
             return
         }
         if (d.desc.length > DESC_MAX) {
-            navigator.showSnack("任务描述不能超过 " + DESC_MAX + " 字")
+            navigator.showSnack(context.getString(R.string.chat_wizard_err_desc_too_long, DESC_MAX))
             return
         }
         // 快速双击守卫:提交中有挂起点,不加锁会创建两个会话
@@ -163,7 +172,7 @@ class TaskWizardViewModel @Inject constructor(
                 // 把向导所选模型写回设置,首条对话按此模型真实请求。
                 // 没有选过模型时不写:否则会把空/无效 id 盖掉设置里已选好的模型。
                 if (d.modelId.isNotBlank()) settings.setModelId(d.modelId)
-                val s = sessionRepo.create("新对话")
+                val s = sessionRepo.create(context.getString(R.string.chat_title_new))
                 val desc = d.desc
                 // 重置草稿但保留刚用过的模型:下次开向导仍默认同一个模型
                 _draft.value = TaskDraft(modelId = d.modelId)
