@@ -255,6 +255,8 @@ def main():
 
     # 矩阵自己带断点续跑,但门禁要的是「这一份包跑满全量」,所以强制 --fresh
     code = run_step('29 场景矩阵', [sys.executable, 'verify/matrix.py', '--fresh'], timeout=3600)
+    import ime  # noqa: E402  (软键盘被摘过就还回去,别让设备停在没有输入法的状态)
+    ime.restore_ime()
     return summarize(code, apk_sha)
 
 

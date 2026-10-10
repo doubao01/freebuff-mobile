@@ -185,11 +185,52 @@ def field_for_label(label):
     return None
 
 
+def clear_field(n=48):
+    """清空当前聚焦的输入框。
+
+    重试幂等地清一次:上一次的残留拼在新内容后面(实测 Base URL 拼成两遍,`https：／／…https//…`),
+    验证永远不可能通过,现场还看不出是哪一步错。只按退格 —— 全选删除在 Compose 上没有可靠入口。
+    """
+    flow.sh('input', 'keyevent', 'KEYCODE_MOVE_END', timeout=20)
+    flow.sh('input', 'keyevent', *(['KEYCODE_DEL'] * n), timeout=60)
+    # 必须等退格处理完:48 个按键是异步消化的,不等就直接输入,尾部退格会把刚打的字删掉
+    # (实测 Base URL 只剩 `https://10.0`,看着像「吞尾巴」,其实是自己删的)
+    time.sleep(1.0)
+
+
+def focused_edit():
+    """当前真正聚焦的 EditText(输入会落到它身上);没有则 None。"""
+    for n in flow.dump_xml().iter('node'):
+        if 'EditText' in (n.get('class') or '') and n.get('focused') == 'true':
+            return n
+    return None
+
+
+def tap_field(xy, label):
+    """点进输入框并**确认真的聚焦了**。
+
+    只按坐标点是不够的:表单会因键盘/输入法窗口开关而整体位移,拿旧坐标点会点空,
+    后面的输入就落在空气上(现象是「输入没落进去」,真正的原因是根本没聚焦)。
+    """
+    for _ in range(3):
+        tap_xy(*xy)
+        time.sleep(0.8)
+        if focused_edit() is not None:
+            return True
+        xy = field_for_label(label) or xy
+    return False
+
+
 def type_into(xy, text, label):
     """输入并**验证真的落进输入框** —— 只 print('typed') 不算数。"""
+    # 每换一个输入框前再确认一次软键盘是摘掉的:必须赶在聚焦之前(聚焦后再动输入法,
+    # 注入的按键只落进去一截)。矩阵中途重启 App 等操作可能让系统又把软键盘顶回来。
+    ime.ensure_ime_free()
+    if not tap_field(xy, label):
+        print('!! 「%s」输入框点不进去(没有聚焦的 EditText)' % label, flush=True)
+        return False
     for attempt in (1, 2):
-        tap_xy(*xy)
-        time.sleep(0.7)
+        clear_field()
         ime.type_text(text)
         time.sleep(0.9)
         hide_ime()
@@ -198,6 +239,8 @@ def type_into(xy, text, label):
             return True
         print('!! 第 %d 次输入没落进「%s」,重试' % (attempt, label), flush=True)
         xy = field_for_label(label) or xy
+        if not tap_field(xy, label):
+            return False
     return False
 
 
@@ -315,6 +358,10 @@ def main():
         print('pm clear…', flush=True)
         subprocess.run([flow.ADB, 'shell', 'pm', 'clear', PKG], capture_output=True, timeout=60)
         time.sleep(2)
+
+    # 没有 AdbKeyboard 时(CI)先摘掉软键盘:必须在**聚焦任何输入框之前**做 ——
+    # 已经聚焦再摘,输入连接会被拆掉,后面的按键只落进去一半(实测 Base URL 只剩 `https://`)。
+    ime.ensure_ime_free()
 
     # 引导全在点中文文案(「先逛逛」「设置」「自定义模型」…):设备是英文界面时
     # 第一步就等不到欢迎页。先把应用级语言钉成简体中文(与设置页开关同一套机制)。
@@ -440,6 +487,7 @@ def main():
         die('「深度思考」没打开(reasoningMode=%s),thinking 场景会误报 FAIL'
             % setting_get('reasoningMode'))
     print('bootstrap OK:模型 %s(%s)已就绪,skipTLS 已开' % (row['name'], row['apiId']), flush=True)
+    ime.restore_ime()          # type_text 可能临时摘掉了软键盘,收尾还回去
     return 0
 
 

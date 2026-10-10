@@ -110,6 +110,10 @@ def send(text):
     返回是否真的发出去了:输入框/按钮没点到的静默失败会让后面整片用例假 FAIL
     (CI 上 App 掉回桌面时就是这样,断言一直在读旧状态)。
     """
+    # 必须在**点输入框之前**确保软键盘已摘:已经聚焦再动输入法会把输入连接拆掉,
+    # 注入的按键只落进去一截(实测 `case emptyargs` 变成 `casetyargs`)。
+    # 矩阵跑完会 force-stop/重启 App,系统可能又把软键盘顶成默认,所以每条消息前都检查一次。
+    ime.ensure_ime_free()
     if flow.do_tap('例如:修复登录页', lowest=True, timeout=8.0):
         button = '发起任务'
     elif flow.do_tap('描述任务…', lowest=True, timeout=8.0):
@@ -794,6 +798,8 @@ def new_chat(timeout=25.0):
 
 def main():
     flow.use_utf8_stdout()
+    # 提示词也是注进去的:没有 AdbKeyboard(CI)时先摘软键盘,否则会被软键盘改写/卡在 composing
+    ime.ensure_ime_free()
     fresh = '--fresh' in sys.argv
     if fresh:
         reset_mock()
