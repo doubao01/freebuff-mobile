@@ -232,6 +232,16 @@ def main():
         install(a.apk)
     verify_installed_matches(a.apk)
 
+    # 应用级语言钉成中文:矩阵断言的是中文文案,而界面文案已迁进资源(默认英文)。
+    # 英文设备上不钉这一步,所有点击会静默 MISS、29 个场景一起假 FAIL。
+    import flow  # noqa: E402  (与引导/矩阵共用同一份 adb 解析)
+    # 首启会请求通知权限,系统弹窗会盖住欢迎页(引导因此失败)
+    flow.grant_notifications(PKG)
+    got = flow.pin_app_locale(PKG)
+    if 'zh' not in got:
+        die('应用级语言没钉上(现在 %r)—— 矩阵带的是中文文案,先手动跑:\n'
+            '   adb shell cmd locale set-app-locales %s --locales zh-Hans' % (got, PKG))
+
     start_mock()
     fresh_artifacts()
 

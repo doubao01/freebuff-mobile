@@ -32,6 +32,9 @@ import ime     # noqa: E402
 
 PKG = 'com.freebuff.mobile'
 
+# 设置页「模型」行的固定副标题(values-zh 的 set_model_sub):标题会随当前模型变,它不会。
+SET_MODEL_SUB = '点击选择对话使用的模型'
+
 
 def die(msg):
     print('!! ' + msg, flush=True)
@@ -280,12 +283,15 @@ def ensure_model_selected(name, model_id):
     if not open_settings():
         print('!! 回不到设置页', flush=True)
         return False
+    # 模型行的标题是「当前模型名 or 选择模型」:设备上已经选过别的模型时,
+    # 标题就不是「选择模型」了 —— 只认那一句话会让整步 MISS。补上固定的副标题。
+    entry = ('选择模型', name, SET_MODEL_SUB)
     for _ in range(8):                       # 模型行在设置页顶部
-        if has('选择模型') or has(name):
+        if any(has(x) for x in entry):
             break
         scroll(-1)
         time.sleep(0.5)
-    if tap_left('选择模型') or tap_left(name):
+    if any(tap_left(x) for x in entry if has(x)):
         time.sleep(1.5)
         tap_left(name)
         time.sleep(1.5)
@@ -295,6 +301,7 @@ def ensure_model_selected(name, model_id):
 
 
 def main():
+    flow.use_utf8_stdout()
     ap = argparse.ArgumentParser()
     ap.add_argument('--base', default='https://10.0.2.2:8899/v1', help='端点(release 包禁明文,要用 https)')
     ap.add_argument('--name', default='Mock', help='模型显示名称')
@@ -309,12 +316,20 @@ def main():
         subprocess.run([flow.ADB, 'shell', 'pm', 'clear', PKG], capture_output=True, timeout=60)
         time.sleep(2)
 
+    # 引导全在点中文文案(「先逛逛」「设置」「自定义模型」…):设备是英文界面时
+    # 第一步就等不到欢迎页。先把应用级语言钉成简体中文(与设置页开关同一套机制)。
+    got = flow.pin_app_locale(PKG)
+    if 'zh' not in got:
+        print('!! 应用级语言没钉上(%r),引导会因界面不是中文而 MISS' % got, flush=True)
+
     # 1) 冷启动:全新安装先是欢迎页,访客模式进会话列表
+    flow.grant_notifications(PKG)    # 先授权:否则首启会被系统弹窗挡在欢迎页前面
     flow.sh('cmd', 'statusbar', 'collapse', timeout=20)    # 通知栏展开会盖住 App
     flow.sh('am', 'force-stop', PKG, timeout=40)
     time.sleep(1)
     subprocess.run([flow.ADB, 'shell', 'monkey', '-p', PKG, '-c',
                     'android.intent.category.LAUNCHER', '1'], capture_output=True, timeout=60)
+    flow.dismiss_notification_dialog()    # 兜底:授权失败时弹窗还在
     if not wait_for(('先逛逛', '会话'), 60):
         die('启动后 60s 内既没看到欢迎页也没看到会话列表')
     if a.login:

@@ -16,6 +16,10 @@ keystore.properties
 *.iml
 .DS_Store
 Thumbs.db
+
+# Python 字节码(验证脚本以源码形式入库,缓存不入库)
+__pycache__/
+*.pyc
 # 本地验证工装:产物(截图/日志/DB 快照/备份)一律不入库,
 # 只放行端到端矩阵那一套脚本 —— 发版工作流(.github/workflows/release.yml)要调用它们。
 android/verify/*

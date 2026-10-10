@@ -85,8 +85,16 @@ def tap(want, timeout=12.0):
 
 
 def streaming():
-    """「正在生成」判定:确认弹窗也算生成中;出现发送/发起任务按钮即已结束。"""
+    """「正在生成」判定:确认弹窗也算生成中;出现发送/发起任务按钮即已结束。
+
+    无障碍树读空(dump 失败)时不能当成「还在生成」—— 模拟器慢的时候偶发,
+    上一次 http401 实测就是这么超时的:应用日志里 `op finish` 早打完了,界面也回到了发送态。
+    先重读一次,仍读不到才沿用旧口径。
+    """
     t = ui_text()
+    if not t:
+        time.sleep(1.0)
+        t = ui_text()
     if any('工具执行确认' in (x or '') for x in t):
         return True
     if '停止' in t:
@@ -175,6 +183,8 @@ def settle(timeout=300.0, dismiss=True):
                 tap('允许执行')
                 time.sleep(1.0)
             time.sleep(1.2)
+        print('!! settle 超时:15s 内没等到新的 op begin(静默判定也没收敛)'.format(), flush=True)
+        dump_ui_for_debug()
         return False
     end = time.time() + timeout
     while time.time() < end:
@@ -190,7 +200,19 @@ def settle(timeout=300.0, dismiss=True):
             tap('允许执行')
             time.sleep(1.0)
         time.sleep(1.0)
+    # 超时现场必须留证:以前只回一个 settle=False,看不出是界面没回到发送态
+    # 还是日志没等到结束行(两者修法完全不同)。只在超时打印,不影响正常路径耗时。
+    print('!! settle 超时:sid={} 等不到收尾行'.format(sid), flush=True)
+    dump_ui_for_debug()
     return False
+
+
+def dump_ui_for_debug(tag='超时界面'):
+    """把当前屏幕文本打进日志(失败现场)。"""
+    t = ui_text()
+    print('--- {} ({} 个文本节点) ---'.format(tag, len(t)), flush=True)
+    for x in t[:40]:
+        print('     UI>', x, flush=True)
 
 
 def agent_row(sid=None):
@@ -725,6 +747,29 @@ def wait_main_ui(timeout=60.0):
     return False
 
 
+def tap_new_task_fab(timeout=10.0):
+    """点右下角「+」开新会话。
+
+    FAB 上是**字形**不是文字:无障碍树里它只有 content-desc(「发起新任务」)。
+    按文字 `+` 找会先撞上空态提示里那句话(「点右下角「+」发起你的第一个任务」)——
+    点上去毫无反应,向导打不开,整轮 29 例全 FAIL("发送失败:App 没回到聊天页")。
+    """
+    end = time.time() + timeout
+    while time.time() < end:
+        t = flow.dump_xml()
+        for n in t.iter('node'):
+            desc = (n.get('content-desc') or '').strip()
+            if '发起新任务' in desc or (n.get('text') or '').strip() == '+':
+                target = flow.clickable_self_or_ancestor(t, n)
+                x, y = flow.center(target.get('bounds'))
+                flow.sh('input', 'tap', str(x), str(y), timeout=20)
+                print('tap FAB「发起新任务」', x, y, flush=True)
+                return True
+        time.sleep(0.6)
+    print('MISS FAB「发起新任务」', flush=True)
+    return False
+
+
 def new_chat(timeout=25.0):
     """点 + 走完向导(选择仓库 → 选择模型 → 描述任务),直到新会话输入框出现。"""
     for _ in range(3):
@@ -733,7 +778,7 @@ def new_chat(timeout=25.0):
         if any('先逛逛' in (x or '') for x in ui_text()):
             tap('先逛逛')
             time.sleep(2.0)
-        if not tap('+', timeout=10.0):
+        if not tap_new_task_fab(timeout=10.0):
             continue
         time.sleep(2.5)
         tap('下一步', timeout=8.0)
@@ -748,6 +793,7 @@ def new_chat(timeout=25.0):
 
 
 def main():
+    flow.use_utf8_stdout()
     fresh = '--fresh' in sys.argv
     if fresh:
         reset_mock()

@@ -30,6 +30,73 @@ import adbenv  # noqa: E402  本地 .toolchain / CI 的 PATH 共用一份 adb �
 ADB = adbenv.ADB
 
 
+def use_utf8_stdout():
+    """把 stdout/stderr 切到 UTF-8。
+
+    为什么每个入口都要调:矩阵/引导的断言与现场打印里既有中文,也有「✦ ▣ ↻ ⓘ」这类字形图标。
+    Windows 控制台默认 GBK,遇到图标字直接 `UnicodeEncodeError` —— 更糟的是它发生在
+    **打印失败现场的时候**(dump_screen),于是真正的错误信息被一个编码异常盖掉。
+    入口脚本自己调一次,不在 import 时改全局。
+    """
+    for s in (sys.stdout, sys.stderr):
+        try:
+            s.reconfigure(encoding='utf-8')       # py3.7+
+        except Exception:
+            pass
+
+
+def pin_app_locale(pkg, tag='zh-Hans'):
+    """把「应用级语言」钉成简体中文,返回设备上实际生效的值。
+
+    为什么需要:矩阵与引导脚本点/断言的都是**中文文案**(「发送」「发起任务」「自定义模型」),
+    而界面文案已经迁进资源文件(默认英文)。英文设备上应用渲染英文,所有点击静默 MISS,
+    29 个场景会一起假 FAIL —— 看起来像应用全坏,其实只是语言不匹配。
+
+    用系统的应用级语言(API 33+ 的 `cmd locale`)而不是改设备语言:不动系统、不用重启,
+    而且和设置页的应用内语言开关是同一套机制(AppLanguage)。
+    """
+    sh('cmd', 'locale', 'set-app-locales', pkg, '--locales', tag, timeout=60)
+    time.sleep(1.0)
+    got = sh('cmd', 'locale', 'get-app-locales', pkg, timeout=60).stdout.decode('utf-8', 'ignore').strip()
+    print('应用级语言:', got, flush=True)
+    return got
+
+
+def grant_notifications(pkg):
+    """预先授予通知权限(API 33+),避免首启弹系统对话框。
+
+    为什么必须做:App 在 MainActivity 里就请求 POST_NOTIFICATIONS —— **全新安装**的首启
+    会被系统弹窗挡在前面,引导脚本等不到欢迎页就直接失败(实测报「启动后 60s 内既没看到
+    欢迎页也没看到会话列表」,现场就是 Allow / Don't allow)。
+
+    为什么用 `pm grant` 而不是去点弹窗:系统弹窗跟**设备语言**走(不受应用级语言影响),
+    「Allow」/「允许」得两边都认;直接授权既确定又少一次点击。
+    """
+    r = sh('pm', 'grant', pkg, 'android.permission.POST_NOTIFICATIONS', timeout=30)
+    err = (r.stderr or b'').decode('utf-8', 'ignore').strip()
+    print('pm grant 通知权限:', 'ok' if not err else err.splitlines()[0], flush=True)
+
+
+def dismiss_notification_dialog(timeout=12.0):
+    """兜底:系统弹窗真出现了就点掉(旧系统没有 pm grant 的权限名、或引导前忘了授权)。
+
+    按**设备语言**匹配(弹窗不由应用渲染),中文/英文两种写法都试。
+    """
+    end = time.time() + timeout
+    while time.time() < end:
+        t = dump_xml()
+        for want in ('允许', 'Allow'):
+            hit = [n for n in t.iter('node') if (n.get('text') or '').strip() == want]
+            if hit:
+                target = clickable_self_or_ancestor(t, hit[0])
+                x, y = center(target.get('bounds'))
+                sh('input', 'tap', str(x), str(y), timeout=20)
+                print('dismiss 系统弹窗:', want, x, y, flush=True)
+                return True
+        time.sleep(0.8)
+    return False
+
+
 def sh(*a, **kw):
     """带超时的 adb shell:uiautomator 偶尔挂住不返回,没 timeout 会卡死整个跑批。"""
     kw.setdefault('timeout', 30)
