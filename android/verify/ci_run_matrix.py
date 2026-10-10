@@ -227,6 +227,12 @@ def main():
         die('设备/模拟器没就绪(先起 emulator)')
     adb_root()
 
+    # 先确保屏幕是亮的、锁屏已去、不会中途熄:模拟器刚启动时可能停在一张黑屏/锁屏上,
+    # 那时 uiautomator 拿不到根节点(dump 直接失败),引导第一步就报「看不到欢迎页」——
+    # 看着像应用没起来,其实设备没人叫醒(实测踩到)。
+    import flow  # noqa: E402
+    flow.wake_device()
+
     apk_sha = sha256_file(a.apk)
     if not a.skip_install:
         install(a.apk)
@@ -234,7 +240,6 @@ def main():
 
     # 应用级语言钉成中文:矩阵断言的是中文文案,而界面文案已迁进资源(默认英文)。
     # 英文设备上不钉这一步,所有点击会静默 MISS、29 个场景一起假 FAIL。
-    import flow  # noqa: E402  (与引导/矩阵共用同一份 adb 解析)
     # 首启会请求通知权限,系统弹窗会盖住欢迎页(引导因此失败)
     flow.grant_notifications(PKG)
     got = flow.pin_app_locale(PKG)

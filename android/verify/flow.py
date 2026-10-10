@@ -45,6 +45,25 @@ def use_utf8_stdout():
             pass
 
 
+def wake_device():
+    """把屏幕叫醒、去掉锁屏、并设成常亮。
+
+    模拟器刚启动时可能停在一张黑屏/锁屏上:那时 uiautomator 拿不到根节点(dump 报
+    `null root node`),整个跑批看起来像「应用没起来」。这一步是幂等的,每次跑批开始都做。
+    """
+    sh('input', 'keyevent', 'KEYCODE_WAKEUP', timeout=20)
+    sh('wm', 'dismiss-keyguard', timeout=20)
+    sh('svc', 'power', 'stayon', 'true', timeout=20)
+    end = time.time() + 30
+    while time.time() < end:
+        t = dump_xml()
+        if len(list(t.iter('node'))) > 1:
+            return True
+        time.sleep(1.0)
+    print('!! 叫醒了但界面树还是空的', flush=True)
+    return False
+
+
 def pin_app_locale(pkg, tag='zh-Hans'):
     """把「应用级语言」钉成简体中文,返回设备上实际生效的值。
 

@@ -359,6 +359,10 @@ def main():
         subprocess.run([flow.ADB, 'shell', 'pm', 'clear', PKG], capture_output=True, timeout=60)
         time.sleep(2)
 
+    # 刚启动的模拟器可能停在黑屏/锁屏上:先叫醒、去锁屏、设常亮(dump 拿不到根节点时
+    # 后面每一步都会报「看不到界面」)
+    flow.wake_device()
+
     # 没有 AdbKeyboard 时(CI)先摘掉软键盘:必须在**聚焦任何输入框之前**做 ——
     # 已经聚焦再摘,输入连接会被拆掉,后面的按键只落进去一半(实测 Base URL 只剩 `https://`)。
     ime.ensure_ime_free()
