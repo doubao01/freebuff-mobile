@@ -64,8 +64,10 @@ sendMessage(text)
 
 ## 5. 长会话实测(8k 窗口压到极限)
 
-`verify/longsession.py 14`(脚本 + 报告 `verify/longsession_report.md`):设备模型 ctx 设为 `8k`,连发 14 轮
+`verify/longsession.py 14`(已移除)(脚本 + 报告 `verify/longsession_report.md`):设备模型 ctx 设为 `8k`,连发 14 轮
 (每轮都要求回复足够长,逼出裁剪),逐轮记录请求规模与耗时。结果:
+
+> 注:`verify/longsession.py` 已移除(随本地工装清理删除,未入库不可恢复),下表实测结果保留备查。
 
 | 指标 | 实测 |
 |---|---|

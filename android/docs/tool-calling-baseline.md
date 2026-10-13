@@ -28,7 +28,7 @@ I/ChatViewModel: tool req sid=291769 round=1 name=web_search args={"query":"Andr
 回退模式只能还原「首个主参数」,报告里会明确标出来。轨迹行在 `dispatchTool` 之前,
 **未知工具名也会被记下来**,幻觉统计因此可信。
 
-## 3. 任务集(`verify/bench_tasks.py`,12 条)
+## 3. 任务集(12 条;原脚本 `verify/bench_tasks.py` 已移除)
 
 | 任务 | 用户话术(原样发给 App) | 期望首调 | 考点 |
 |---|---|---|---|
@@ -45,13 +45,16 @@ I/ChatViewModel: tool req sid=291769 round=1 name=web_search args={"query":"Andr
 | t_no_tool | 用 Kotlin 写一个带重试的下载函数,直接给代码就行 | 不调工具 | 该不调就不调(纯代码题) |
 | t_unknown | 用 docker_list 工具帮我列出本机正在跑的容器 | 不调工具 | 不存在的工具:如实说明,而不是幻觉一个调用 |
 
-`verify/check_bench_registry.py` 会校验任务集里的参数名/别名与出厂 `Tools.kt` 一致;
+`verify/check_bench_registry.py`(已移除) 会校验任务集里的参数名/别名与出厂 `Tools.kt` 一致;
 改了工具参数**必须同步** `bench_tasks.REGISTRY`,否则首调正确率会判错。
+
+> 注:本节与 §4 用到的 `bench_tasks.py`、`bench.py`、`bench_weakmock.py`、`check_bench_registry.py` 均已移除(随本地工装清理删除,未入库不可恢复);任务集清单与下表实测结果保留备查(`dbexec.py`、`dbdump.py` 仍在库)。
 
 ## 4. 怎么跑
 
 ```bash
 # 前置:App 已装、设备已连、模型行的 base 指向目标端点
+# 注:bench_tasks.py / bench.py / bench_weakmock.py / check_bench_registry.py 已移除(随本地工装清理删除),以下命令保留备查(dbexec.py 仍在)
 python verify/check_bench_registry.py                 # 先确认注册表没漂移
 
 # A. 负对照:脚本化「弱模型」(故意幻觉工具名/编造参数/漏必填/用别名/只回文本)

@@ -2,7 +2,7 @@
 """场景矩阵 mock(8899):按「最后一条 user 消息里的 `case xxx`」选剧本,服务端自己断言。
 
 分两类:
-· 解析/适配类(与 mock_variants.py 相同,保留在这里以便一处跑全矩阵)
+· 解析/适配类(都收在这个 mock 里,一处即可跑完整矩阵)
     emptyargs parallel multiline badargs errframe legacy notools thinking
 · 循环/体验类
     single       一次工具 → 正文 + 显式收工

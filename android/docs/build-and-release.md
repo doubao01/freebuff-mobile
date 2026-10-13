@@ -63,6 +63,7 @@ git push origin --delete dryrun/update-manifest
 本地也能干跑同一套护栏(不依赖 CI,秒级反馈;脚本在真机验证工具目录 `android/verify/`,不入库):
 
 ```bash
+# 注:verify/dryrun_release.py 已移除(随本地工装清理删除,未入库不可恢复),以下命令保留备查;护栏本身仍在 release.yml 的 run: 块里
 cd android && python verify/dryrun_release.py            # 15 项:解析输入/标签护栏/清单重建+回推/自证/签名与版本
 python verify/dryrun_release.py --no-push                # 只验证重建与自洽,不写远端
 python verify/dryrun_release.py --only-verify            # 只重跑「线上自证」步骤

@@ -115,14 +115,16 @@ sealed interface ApiResult<out T> {
 
 #### 3.3.3 验证
 
-`verify/mock_variants.py` 是按「最后一条 user 消息里的 `case xxx`」切场景的变体 mock,覆盖上表每一项并在
-服务端打印 `PASS/FAIL`;设备端用 `verify/send_case.py <case>` 发一条消息后 grep 日志即可回归。
+> 注:本节及 §3.3.4 末尾提到的 `mock_variants.py`、`send_case.py`、`recheck.py`、`longsession.py`、`drive.py` 均已移除(随本地工装一并清理删除,未入库不可恢复),用法与结论原样保留备查;矩阵那套(`ci_run_matrix.py`/`matrix.py`/`mock_matrix.py`/`ci_bootstrap.py`)以及 `flow.py`、`ime.py` 仍在库。
+
+`verify/mock_variants.py`(已移除) 是按「最后一条 user 消息里的 `case xxx`」切场景的变体 mock,覆盖上表每一项并在
+服务端打印 `PASS/FAIL`;设备端用 `verify/send_case.py <case>`(已移除) 发一条消息后 grep 日志即可回归。
 
 成规模的回归用「场景矩阵」:`verify/mock_matrix.py` 在 `127.0.0.1:8899` 起 mock(按 `case xxx` 切 29 个场景),
 `verify/matrix.py` 逐场景在真机上跑完一轮并把断言写进 `verify/matrix_report.md`;个别场景需要看库才能判定
-(如「工具后只回文本要被提醒续跑」),用 `verify/recheck.py <case> <期望文本>` 盯库复验,不依赖界面空闲。
+(如「工具后只回文本要被提醒续跑」),用 `verify/recheck.py <case> <期望文本>`(已移除) 盯库复验,不依赖界面空闲。
 矩阵支持断点续跑:结果逐场景落 `verify/matrix_state.jsonl`(进程被杀不丢进度),全量重跑时已 PASS 的直接沿用、
-只补没过的;点名场景永远实跑,`--fresh` 全部重跑。长会话回归见 `verify/longsession.py`(结果见 `docs/context-engineering.md` §5)。
+只补没过的;点名场景永远实跑,`--fresh` 全部重跑。长会话回归见 `verify/longsession.py`(已移除)(结果见 `docs/context-engineering.md` §5)。
 
 同一套脚本也是**发版门禁**:`verify/ci_run_matrix.py` 负责装机(sha256 自证设备上那份就是待测产物)→ 起 TLS mock →
 `verify/ci_bootstrap.py` 把全新安装带到可跑状态(访客模式 + 自定义模型并选中)→ 跑矩阵 → 报告进 Step Summary;
@@ -150,7 +152,7 @@ sealed interface ApiResult<out T> {
 | 进程被杀/崩溃后,那条写到一半的消息永久挂在「连接模型并开始生成…」上,看着像还在生成;空正文还会作为一条空助手轮进入后续上下文 | 冷启动修复 `SessionRepository.repairAbandonedMessages`(进程刚启动时库里不可能有真在写入的消息,此刻修最安全):空正文→「(上次生成被中断,可重新发送)」、清过程性步骤、把 running/waiting 的工具卡片标成未完成;纯逻辑在 `MsgSteps.repairAbandoned`,App 启动时后台跑一次。扫多少:首次(本功能上线后第一次冷启动)全量扫一遍(老版本写坏的半成品可能已被后续消息压在历史中间),之后只扫每条会话**末尾一条** —— 被杀只可能把最后一条留在半途,不必每次启动都解析全库 JSON(标记写在 settings 的 `abandonedRepairSwept`) | App 启动即修复「半成品」,是各家客户端的常规做法(崩溃恢复) |
 
 设备实测要点(可重跑):`adb shell run-as com.freebuff.mobile cat databases/freebuff.db*` 拉库核对正文/步骤,
-`verify/drive.py`+`verify/flow.py` 驱动 UI、`verify/ime.py` 用无界面 IME 输入中文;
+`verify/drive.py`(已移除)+`verify/flow.py` 驱动 UI、`verify/ime.py` 用无界面 IME 输入中文;
 重复调用场景可用真实端点复现(日志 `repeat sid=… dup=3/3 consecutive=N`)。
 注意:`verify/flow.py` 的 `type` 走 `adb shell input text`,几十个字符以上会被吞尾巴(实测 57 字符只落地 40);
 输入长文本要用 `verify/ime.py`(AdbKeyboard `commitText`,不过键盘输入通道,字节完整)。
@@ -294,7 +296,7 @@ mock 的 chunked **永不结束流**(收下请求只写分块、不发终止块)
   历史口径:20/22(23 场景时代)。
 - 换成 `claude-3-7-sonnet` 重跑:`thinking`/`thinkreject` 均 PASS(Anthropic 规则在真机成立:首轮送
   `think=['thinking']`,带工具历史那轮不送)。
-- `progress` 用 `recheck.py` 盯库复验 PASS:正文为三段进度播报,logcat 里 `nudge #1 → round 3 → op finish rounds=3`,
+- `progress` 用 `recheck.py`(已移除) 盯库复验 PASS:正文为三段进度播报,logcat 里 `nudge #1 → round 3 → op finish rounds=3`,
   即「动过工具后只回文本」被提醒续跑,而不是当成答完。
 
 ##### 3.3.7 端侧子代理(spawn_subagent)
