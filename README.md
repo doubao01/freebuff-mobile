@@ -85,7 +85,7 @@ android/
 `LATEST_VERSION` 都由它派生(构建时生成),发版标签必须等于 `versionName`(发布工作流硬校验)。
 
 发版后,发布工作流会用 [`scripts/update-manifest.py`](scripts/update-manifest.py) 重建 `dist/update.json`
-(版本 + 本版提交标题作更新说明)并回推 `main`,再自证线上可匿名读取——App 内「检查更新」拉的就是它;
+(版本 + 本版提交标题作更新说明)并回推 `master`,再自证线上可匿名读取——App 内「检查更新」拉的就是它;
 CI 会用同一脚本校验清单版本不得高于产品版本,避免出现永远装不上的「新版本」。
 
 ## 签名
@@ -105,5 +105,5 @@ scripts/gen-release-keystore.sh
 同时校验 `dist/update.json` 的版本不会高于产品版本。
 
 [`.github/workflows/release.yml`](.github/workflows/release.yml) 在推送 `v*` 标签时:跑单测 → 校验「标签 =
-versionName」→ 打 release APK → 建 GitHub Release → 刷新 `dist/update.json` 回推 `main` → 校验线上更新源。
+versionName」→ 打 release APK → 建 GitHub Release → 刷新 `dist/update.json` 回推 `master` → 校验线上更新源。
 发版流程详见 [android/docs/build-and-release.md](android/docs/build-and-release.md)。

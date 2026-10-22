@@ -10,11 +10,11 @@ name: Android Release
 #
 # 工作流会校验「标签 = versionName」,不匹配直接失败 —— 防止发出版本号对不上的包。
 # Release 说明自动取上一个标签到本标签之间的提交标题,发完后可在 Releases 页面编辑润色。
-# 发版完成后会用 scripts/update-manifest.py 重建 dist/update.json(检查更新的数据源)并回推 main,
+# 发版完成后会用 scripts/update-manifest.py 重建 dist/update.json(检查更新的数据源)并回推 master,
 # 再自证线上(API + raw)已读到同一版本 —— 回推失败或版本对不上会直接把本次发版判为失败。
 #
 # 干跑(Actions 页面手动触发,workflow_dispatch):跑同一套步骤,但**不发 Release**,
-# 重建的 dist/update.json 也只回推到临时分支,main 与更新通道完全不动 ——
+# 重建的 dist/update.json 也只回推到临时分支,master 与更新通道完全不动 ——
 # 用来在打正式标签之前验证「标签 → 版本号 → 清单 → 回推 → 线上自证」整条链。
 #
 # 发版前先在模拟器上对**刚打出来的这个 APK**跑 29 个端到端场景(verify/ci_run_matrix.py):
@@ -79,7 +79,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       # 归一化本次运行的四个量,后续步骤一律读这里 —— 手动触发时 GITHUB_REF_NAME 是分支名而非标签,
-      # 直接读它会把 main 当成版本号。标签推送永远是正式模式,不受输入影响。
+      # 直接读它会把 master 当成版本号。标签推送永远是正式模式,不受输入影响。
       - name: Resolve release ref
         id: rel
         env:
@@ -105,7 +105,7 @@ jobs:
             TAG="${GITHUB_REF_NAME}"
             REF="${GITHUB_REF_NAME}"
             DRY="false"
-            BRANCH="main"
+            BRANCH="master"
           fi
           # 预发布标签(v1.2.0-rc1)保留完整标签做包名/标题,清单版本取主版本部分(version.properties 不带后缀)
           LABEL="${TAG#v}"
@@ -368,7 +368,7 @@ jobs:
 
       # 发版后重建 dist/update.json —— App 内「检查更新」拉取的数据源(UPDATE_URL 默认直链它)。
       # 生成与校验共用 scripts/update-manifest.py(CI 的 --check 与本地/发版同一份规则)。
-      # 正式发版推到 main;干跑只推临时分支(默认 dryrun/update-manifest),更新通道不受影响。
+      # 正式发版推到 master;干跑只推临时分支(默认 dryrun/update-manifest),更新通道不受影响。
       # 提交说明以 [skip ci] 结尾避免触发 android.yml。
       # 回推被抢先时重拉重试;三次都推不上去 = 更新通道停在旧版本,直接把本次发版判失败。
       - name: Refresh update.json (in-app update source)
@@ -437,7 +437,7 @@ jobs:
 
       # 自证更新通道:回推后从 GitHub API 确认线上清单就是本次版本(权威,非 CDN),
       # 再轮询 raw 直链(用户 App 实际请求的地址)记录 CDN 是否已跟上。
-      # 干跑额外断言 main 上的清单没被动过 —— 干跑绝不允许影响真正的更新通道。
+      # 干跑额外断言 master 上的清单没被动过 —— 干跑绝不允许影响真正的更新通道。
       - name: Verify published update source
         if: steps.manifest.outputs.changed == 'true'
         env:
@@ -473,11 +473,11 @@ jobs:
           fi
           if [ "$DRY" = "true" ]; then
             MAIN_VER=$(gh api -H "Accept: application/vnd.github.raw" \
-              "repos/${GITHUB_REPOSITORY}/contents/dist/update.json?ref=main" 2>/dev/null \
+              "repos/${GITHUB_REPOSITORY}/contents/dist/update.json?ref=master" 2>/dev/null \
               | python3 -c 'import json,sys; print(json.load(sys.stdin).get("version",""))' 2>/dev/null || true)
             if [ "$MAIN_VER" = "$VER" ]; then
-              echo "::error::干跑把 main 上的清单也写成了 v$VER —— 干跑不允许改动真正的更新通道"
+              echo "::error::干跑把 master 上的清单也写成了 v$VER —— 干跑不允许改动真正的更新通道"
               exit 1
             fi
-            echo "干跑自证 PASS:清单已在 ${DEST} 读到 v$VER,main 仍是 v$MAIN_VER(未受影响)"
+            echo "干跑自证 PASS:清单已在 ${DEST} 读到 v$VER,master 仍是 v$MAIN_VER(未受影响)"
           fi

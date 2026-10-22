@@ -83,7 +83,7 @@ android/
 
 版本号唯一来源是 [`version.properties`](version.properties):app 的 `versionName`/`versionCode` 与
 `core:model` 的 `LATEST_VERSION` 均由它派生(构建时生成),发版只改这一个文件;发版工作流会用
-[`scripts/update-manifest.py`](../scripts/update-manifest.py) 重建 `dist/update.json` 并回推 `main`。
+[`scripts/update-manifest.py`](../scripts/update-manifest.py) 重建 `dist/update.json` 并回推 `master`。
 
 要点:
 - 所有网络调用返回统一 `ApiResult<T>`(`Ok` / `Err(ApiError)`),错误分类含超时/DNS/连接/TLS/HTTP(保留状态码)/解析/未配置

@@ -474,7 +474,7 @@ mock 的 chunked **永不结束流**(收下请求只写分块、不发终止块)
 `network/SilentRetry.kt`);`check()` 保持单次语义,单测与「手动重试」按钮直接用后者 —— 一次网络抖动不该让用户先看到红字。
 
 默认更新源是本仓库公开的 `dist/update.json`(raw.githubusercontent.com 直链,匿名可读),发版时由
-`.github/workflows/release.yml` 用 `scripts/update-manifest.py` 重建并回推 `main`,随后从 GitHub API + raw
+`.github/workflows/release.yml` 用 `scripts/update-manifest.py` 重建并回推 `master`,随后从 GitHub API + raw
 两条路径自证线上版本已对齐;CI(`android.yml`)用同一脚本校验清单版本不高于产品版本。
 
 `UpdateSheet` 分「检查中 / 有更新 / 已是最新 / 失败(可重试)」四态;有更新时先说 `summary` 再列 `notes`。

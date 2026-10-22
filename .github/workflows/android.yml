@@ -5,14 +5,14 @@ name: Android CI
 # 只要其中任一提交改了 android/**, 就会触发; 只有整次推送都不涉及时才跳过。
 on:
   push:
-    branches: [main, develop]
+    branches: [master]
     paths:
       - 'android/**'
       - 'dist/update.json'
       - 'scripts/**'
       - '.github/workflows/android.yml'
   pull_request:
-    branches: [main]
+    branches: [master]
     paths:
       - 'android/**'
       - 'dist/update.json'

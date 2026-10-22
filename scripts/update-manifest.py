@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """dist/update.json(App 内「检查更新」的数据源)的生成与校验。
 
-生成 —— 发版工作流用,把标签版本与提交标题写进清单并回推 main:
+生成 —— 发版工作流用,把标签版本与提交标题写进清单并回推 master:
     python3 scripts/update-manifest.py 1.2.0 [--prev v1.1.0] [--apk-file <产物路径>]
 校验 —— CI 用,清单与产品版本号不允许漂移:
     python3 scripts/update-manifest.py --check

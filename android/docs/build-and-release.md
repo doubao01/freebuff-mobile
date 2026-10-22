@@ -4,7 +4,7 @@
 
 ## 0. 发版流程(自动化,推荐)
 
-推送 `v*` 标签即自动发版:[`.github/workflows/release.yml`](../.github/workflows/release.yml) 会跑单测、构建 release APK、校验「标签 = versionName」、创建 GitHub Release 并附上按版本命名的 APK,最后把 `dist/update.json`(App 内「检查更新」的数据源)刷成本次版本并回推 `main`。
+推送 `v*` 标签即自动发版:[`.github/workflows/release.yml`](../.github/workflows/release.yml) 会跑单测、构建 release APK、校验「标签 = versionName」、创建 GitHub Release 并附上按版本命名的 APK,最后把 `dist/update.json`(App 内「检查更新」的数据源)刷成本次版本并回推 `master`。
 
 **版本号唯一来源是 [`android/version.properties`](../version.properties)**:app 的 `versionName`/`versionCode` 与
 `core:model` 的 `LATEST_VERSION`(设置页与「检查更新」显示的基准)**都由它构建时生成** ——
@@ -12,7 +12,7 @@
 
 ```bash
 # 1. 提升 android/version.properties 的 versionCode / versionName 并提交推送
-git push origin main
+git push origin master
 # 2. 等 Android CI 全绿
 gh run watch   # 或看 Actions 页面
 # 3. 打标签推送 → 发版自动完成
@@ -24,7 +24,7 @@ git tag -a v1.2.0 -m "v1.2.0: 一句话说明" && git push origin v1.2.0
 - **版本一致性硬校验**:标签 `vX.Y.Z` 与 `versionName` 不一致时工作流直接失败,不会发出版本号对不上的包。所以先推版本号提升、再打标签。预发布标签(`v1.2.0-rc1`)取主版本部分比对。
 - **更新源自动同步**:发版后 `dist/update.json` 被重写为
   `{"version":"<标签版本>","url":".../releases/latest","notes":["<上一个标签到本标签的提交标题>"]}`
-  并提交回 `main` —— 默认 `UPDATE_URL` 直链这个文件,所以「发布的版本号」与「App 检查更新看到的版本」不会再漂移。
+  并提交回 `master` —— 默认 `UPDATE_URL` 直链这个文件,所以「发布的版本号」与「App 检查更新看到的版本」不会再漂移。
   回推三次都失败、或线上校验读到的版本与标签不一致时,本次发版会被判失败(更新通道不能静默停在旧版本)。
 - **Release 说明自动生成**:取上一个标签到本标签之间的提交标题(`- 标题 (短哈希)` 逐条列出);首个标签没有可比对的上一个标签时写「首个自动发版」。发布后可在 Releases 页面编辑润色。
 - **产物命名**:`FreebuffMobile-<版本>-release.apk`(与第 3 节的 `dist/` 约定一致)。
@@ -37,7 +37,7 @@ git tag -a v1.2.0 -m "v1.2.0: 一句话说明" && git push origin v1.2.0
 ### 0.1 干跑:不打正式标签先验一遍
 
 正式标签会真的发出一个 Release(不可撤销),所以发版链本身可以先用同一份工作流干跑一遍:
-**Actions → Android Release → Run workflow**(选 `main` 分支),输入:
+**Actions → Android Release → Run workflow**(选 `master` 分支),输入:
 
 | 输入 | 说明 |
 |---|---|
@@ -45,9 +45,9 @@ git tag -a v1.2.0 -m "v1.2.0: 一句话说明" && git push origin v1.2.0
 | `dry_run` | 默认 `true`。干跑不发 Release,重建的 `dist/update.json` 只推到临时分支 |
 | `manifest_branch` | 干跑时清单回推的分支,默认 `dryrun/update-manifest` |
 
-与正式发版的差异只有两处:**不创建 GitHub Release**、**清单不回推 `main`**;其余步骤(标签＝versionName 硬校验、
+与正式发版的差异只有两处:**不创建 GitHub Release**、**清单不回推 `master`**;其余步骤(标签＝versionName 硬校验、
 单测、R8 release 包、APK 签名与包内版本自证、清单重建、API/raw 线上自证)完全一致。工作流还会额外断言
-`main` 上的清单没被干跑改动过 —— 干跑不允许影响真正的更新通道。
+`master` 上的清单没被干跑改动过 —— 干跑不允许影响真正的更新通道。
 
 ```bash
 gh workflow run release.yml -f tag=v1.0.0 -f dry_run=true    # 效果同上,命令行触发
@@ -93,7 +93,7 @@ python verify/dryrun_release.py --only-verify            # 只重跑「线上自
 - 带上 `apk` 则面板内**直接下载并校验 sha256** 再交系统安装器 —— 指纹由发版工作流从真实产物算出
   (`--apk-file`),不靠人工填;校验不过的包会被丢弃,不会交给安装器。
 
-- **默认地址**:`https://raw.githubusercontent.com/doubao01/freebuff-mobile/main/dist/update.json`
+- **默认地址**:`https://raw.githubusercontent.com/doubao01/freebuff-mobile/master/dist/update.json`
   (仓库公开,匿名可读;App 只发一次 GET,无任何密钥)。
 - **换源**:在 `android/local.properties` 写 `freebuff.updateUrl=…`,或打包时设环境变量 `FREEBUFF_UPDATE_URL=…`
   (二者都注入 `BuildConfig.UPDATE_URL`)。
@@ -307,7 +307,7 @@ scripts/gradle.sh :app:signingReport
 | 依赖下载长时间无进展 | 直连 Maven 仓库被阻塞。确认 `settings.gradle.kts` 使用的是阿里云镜像 |
 | release 包安装后崩溃、debug 正常 | R8 裁掉了反射所需成员。按第 6 节补充 keep 规则 |
 | App 里「检查更新」总是失败 | 默认更新源是 GitHub raw 直链(国内网络可能不可达)。确认网络可访问 `raw.githubusercontent.com`,或把 `freebuff.updateUrl` 指向自建更新源 |
-| 发版后 App 仍显示「已是最新」 | 看 release 工作流末尾「Verify published update source」是否失败(清单未回推到 main);重跑该工作流即可 |
+| 发版后 App 仍显示「已是最新」 | 看 release 工作流末尾「Verify published update source」是否失败(清单未回推到 master);重跑该工作流即可 |
 | 想在不发版的前提下验证发版链 | 按 0.1 节干跑:同一份工作流,只把清单推到临时分支、不建 Release |
 | 想改更新源地址 | 优先用 `freebuff.updateUrl` / `FREEBUFF_UPDATE_URL`(不必改代码);只有默认值要变时才改 `app/build.gradle.kts` 里的 `updateUrl` 常量 |
 | `INSTALL_FAILED_UPDATE_INCOMPATIBLE` | 设备上已装同包名但签名不同的应用,先卸载旧包 |
