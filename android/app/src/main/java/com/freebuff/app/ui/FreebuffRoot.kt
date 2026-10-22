@@ -72,6 +72,7 @@ import com.freebuff.feature.settings.AboutSheet
 import com.freebuff.feature.settings.CustomModelFormSheet
 import com.freebuff.feature.settings.CustomModelsSheet
 import com.freebuff.feature.settings.GitSheet
+import com.freebuff.feature.settings.SearchSheet
 import com.freebuff.feature.settings.SettingsScreen
 import com.freebuff.feature.settings.SettingsViewModel
 import com.freebuff.feature.settings.UpdateSheet
@@ -207,6 +208,7 @@ fun FreebuffRoot(navigator: AppNavigator) {
                                         },
                                     )
                                     AppNavState.SHEET_GIT -> GitSheet()
+                                    AppNavState.SHEET_SEARCH -> SearchSheet()
                                     AppNavState.SHEET_CUSTOM_MODELS -> CustomModelsSheet()
                                     AppNavState.SHEET_UPDATE -> UpdateSheet()
                                     AppNavState.SHEET_ABOUT -> AboutSheet()

@@ -9,6 +9,7 @@ import com.freebuff.core.data.repository.CustomModelRepository
 import com.freebuff.core.data.repository.GitAuthRepository
 import com.freebuff.core.data.repository.GitConnectStep
 import com.freebuff.core.data.repository.ModelCatalogRepository
+import com.freebuff.core.data.repository.SearchKeyRepository
 import com.freebuff.core.data.repository.SessionRepository
 import com.freebuff.core.data.repository.SettingsRepository
 import com.freebuff.core.data.repository.UpdateDownloader
@@ -47,6 +48,8 @@ class SettingsViewModel @Inject constructor(
     private val customModelRepo: CustomModelRepository,
     private val catalog: ModelCatalogRepository,
     private val gitAuth: GitAuthRepository,
+    /** 联网搜索(Exa)密钥:密文存库、Keystore 解密,UI 只看「有没有配置」。 */
+    private val searchKeys: SearchKeyRepository,
     private val updateRepo: UpdateRepository,
     private val updateDownloader: UpdateDownloader,
     /** 下载安装包落在应用缓存目录(与 app 的 file_paths.xml 对应)。 */
@@ -137,7 +140,8 @@ class SettingsViewModel @Inject constructor(
 
     /* ---------------- 会话与数据 ---------------- */
 
-    val sessionCount: StateFlow<Int> = sessionRepo.sessions
+    // 只用会话行(不带消息):设置页显示的是条数,没必要为它订阅全库消息
+    val sessionCount: StateFlow<Int> = sessionRepo.sessionSummaries
         .map { it.size }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
 
@@ -282,6 +286,32 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             gitAuth.revoke()
             navigator.showSnack(context.getString(R.string.set_git_unlinked))
+        }
+    }
+
+    /* ---------------- 联网搜索 ---------------- */
+
+    /** 是否已配置搜索密钥(只暴露布尔:密钥本身永不回显到界面)。 */
+    val searchKeyConfigured: StateFlow<Boolean> = searchKeys.configured
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+
+    /** 保存搜索密钥:空白输入不覆盖已配置的密钥(避免误触把可用配置抹成空)。 */
+    fun saveSearchKey(plain: String) {
+        if (plain.isBlank()) {
+            navigator.showSnack(context.getString(R.string.set_search_key_empty))
+            return
+        }
+        viewModelScope.launch {
+            searchKeys.set(plain)
+            navigator.showSnack(context.getString(R.string.set_search_key_saved))
+            navigator.closeSheet()
+        }
+    }
+
+    fun clearSearchKey() {
+        viewModelScope.launch {
+            searchKeys.clear()
+            navigator.showSnack(context.getString(R.string.set_search_key_cleared))
         }
     }
 

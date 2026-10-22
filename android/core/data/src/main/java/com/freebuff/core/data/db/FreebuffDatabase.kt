@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MemoryEntity::class,
         MemoryEntryEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -86,13 +86,28 @@ abstract class FreebuffDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * v7:messages 按 sessionId 建索引。
+         *
+         * 流式回复写入最密(节流后仍是每秒数次),而每一次写入/订阅都按 sessionId 取行;
+         * 无索引时走全表扫描,且会话一多、消息一长就线性变慢。存量库用 CREATE INDEX 补上,
+         * 不重建表(消息是用户数据,重建有丢数据风险且代价与库大小成正比)。
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_sessionId ON messages(sessionId)")
+            }
+        }
+
         fun get(context: Context): FreebuffDatabase = instance ?: synchronized(this) {
             instance ?: Room.databaseBuilder(
                 context.applicationContext,
                 FreebuffDatabase::class.java,
                 "freebuff.db",
             )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(
+                    MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7,
+                )
                 .build().also { instance = it }
         }
     }

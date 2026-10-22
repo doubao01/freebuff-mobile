@@ -14,7 +14,7 @@ core/data/src/main/java/com/freebuff/core/data/repository/SessionRepository.kt 2
 core/data/src/main/java/com/freebuff/core/data/repository/SubagentRunner.kt 10
 core/data/src/main/java/com/freebuff/core/data/repository/UpdateDownloader.kt 2
 core/data/src/main/java/com/freebuff/core/data/repository/UpdateRepository.kt 3
-core/data/src/main/java/com/freebuff/core/data/tools/ToolExecutors.kt 75
+core/data/src/main/java/com/freebuff/core/data/tools/ToolExecutors.kt 90
 core/model/src/main/java/com/freebuff/core/model/AgentEvents.kt 38
 core/model/src/main/java/com/freebuff/core/model/AgentLoop.kt 11
 core/model/src/main/java/com/freebuff/core/model/AgentNotify.kt 4
@@ -30,7 +30,7 @@ core/model/src/main/java/com/freebuff/core/model/MsgSteps.kt 13
 core/model/src/main/java/com/freebuff/core/model/SessionGrouping.kt 9
 core/model/src/main/java/com/freebuff/core/model/Subagent.kt 15
 core/model/src/main/java/com/freebuff/core/model/ToolErrors.kt 76
-core/model/src/main/java/com/freebuff/core/model/Tools.kt 159
+core/model/src/main/java/com/freebuff/core/model/Tools.kt 161
 core/ui/src/main/java/com/freebuff/core/ui/navigation/AppNavigator.kt 1
 feature/chat/src/main/java/com/freebuff/feature/chat/ChatScreen.kt 1
 feature/chat/src/main/java/com/freebuff/feature/chat/ChatViewModel.kt 18

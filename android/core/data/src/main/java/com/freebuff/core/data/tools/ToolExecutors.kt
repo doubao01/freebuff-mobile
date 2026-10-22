@@ -5,6 +5,7 @@ import com.freebuff.core.data.network.ApiResult
 import com.freebuff.core.data.network.FreebuffApi
 import com.freebuff.core.data.network.GithubApi
 import com.freebuff.core.data.repository.GitTokenProvider
+import com.freebuff.core.data.repository.SearchKeyProvider
 import com.freebuff.core.model.AgentLoop
 import com.freebuff.core.model.AgentTool
 import com.freebuff.core.model.DefaultTools
@@ -15,11 +16,14 @@ import com.freebuff.core.model.ToolErrors
 import com.freebuff.core.model.ToolHost
 import com.freebuff.core.model.ToolOutcome
 import com.freebuff.core.model.ToolRoute
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.Executors
@@ -39,8 +43,39 @@ class ToolExecutors @Inject constructor(
     private val tokens: GitTokenProvider = GitTokenProvider { "" },
     /** GitHub REST 客户端(写路径复用它的 base 与鉴权信封,单测可指向 MockWebServer)。 */
     private val github: GithubApi = GithubApi(client),
+    /**
+     * 搜索 API(Exa)密钥来源:未配置时为空串 —— web_search 会自动降级到免钥通道,
+     * 而不是拿一张「缺少配置」的错误信封把轮次卡死。
+     */
+    private val searchKey: SearchKeyProvider = SearchKeyProvider { "" },
 ) {
     private val io: CoroutineDispatcher = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
+
+    /**
+     * 搜索接口地址。生产恒为默认值;单测把它指向 MockWebServer(见 ToolExecutorsTest),
+     * 这样「主路 / 降级 / 降级原因」都能在无网络的前提下验证。
+     */
+    internal var exaEndpoint: String = EXA_SEARCH_URL
+    internal var fallbackEndpoint: String = DUCKDUCKGO_ANSWER_URL
+
+    private companion object {
+        /** 真实搜索 API(Exa):POST + `x-api-key`,响应是 results[](title/url/highlights)。 */
+        const val EXA_SEARCH_URL = "https://api.exa.ai/search"
+
+        /** 取几条结果:5 条够模型拼答案,再多只是白烧上下文。 */
+        const val EXA_RESULTS = 5
+
+        /** 免钥降级通道(DuckDuckGo Instant Answer):只有主题摘要与相关条目。 */
+        const val DUCKDUCKGO_ANSWER_URL = "https://api.duckduckgo.com/"
+
+        /** JSON 请求体(与 GithubApi 用同一个 content-type,部分网关对 charset 敏感)。 */
+        val JSON_MEDIA = "application/json; charset=utf-8".toMediaType()
+
+        /** 未配置密钥时的说明:写进结果 —— 模型据此知道结果集不完整,用户也知道去哪儿补密钥。 */
+        const val NO_KEY_NOTE =
+            "(未配置搜索 API 密钥,以下为免钥摘要通道的结果,可能不完整;" +
+                "可在「设置 → 集成 → 联网搜索」填入密钥以启用完整搜索)"
+    }
 
     /** 写工具集合(注册表里声明,这里只取用):鉴权失败时的处方与只读工具不同。 */
     private val writeTools: Set<String> = DefaultTools.WRITE_TOOLS
@@ -122,6 +157,10 @@ class ToolExecutors @Inject constructor(
         if (tool.route == ToolRoute.HOST) {
             val hosted = try {
                 host?.executeHostTool(call, attempt)
+            } catch (e: CancellationException) {
+                // 用户停止(或宿主协程被取消)不能改写成一张「工具失败」信封:那会让主循环
+                // 以为还能继续,把轮次接着跑下去 —— 取消必须原样穿透执行器
+                throw e
             } catch (e: Exception) {
                 errorFor(tool.name, e, attempt)
             }
@@ -135,6 +174,8 @@ class ToolExecutors @Inject constructor(
         )
         val outcome = try {
             impl(args)
+        } catch (e: CancellationException) {
+            throw e // 用户停止:同上,取消穿透执行器,由操作协程统一收尾
         } catch (e: Exception) {
             errorFor(tool.name, e, attempt)
         }
@@ -216,37 +257,200 @@ class ToolExecutors @Inject constructor(
         return ToolOutcome(if (summary.isBlank()) "任务已标记完成。" else "任务已标记完成:" + summary.take(500))
     }
 
-    /* ---------------- 联网搜索(免钥:DuckDuckGo Instant Answer API) ---------------- */
+    /* ---------------- 联网搜索(Exa 主路 + 免钥降级) ---------------- */
 
-    private fun webSearch(argsJson: String): ToolOutcome {
+    /** 一条搜索结果(格式化后交给模型与卡片展示)。 */
+    private data class SearchHit(
+        val title: String,
+        val url: String,
+        val snippet: String,
+        /** 发布日期(仅日期部分);Exa 不一定给,新闻类查询算它有价值。 */
+        val published: String = "",
+    )
+
+    /**
+     * 联网搜索。
+     *
+     * 主路是真实搜索 API(Exa,[EXA_SEARCH_URL]):配置了密钥就用它,拿到的是
+     * **标题 + 链接 + 与查询相关的命中片段**(highlights),而不是某百科页面的一段摘要。
+     *
+     * 三条降级路径(结果里会说明为什么没走完整搜索):
+     * 1. 未配置密钥 → 免钥通道(DuckDuckGo Instant Answer);
+     * 2. 密钥被端点拒 / 限流 / 服务不可用 → 免钥通道 + 原因(用户能据此去修密钥);
+     * 3. 主路返回空结果 → 免钥通道补一次。
+     *
+     * 为什么不直接回错误信封:搜索是「查资料」的第一步,一条启发式失败就让整轮停下
+     * 对用户毫无价值;降级结果即便不完整,也带着可以继续追的链接(web_fetch 接着读)。
+     * 只有**两条通道都拿不到东西**时才升级成错误信封(见 [fallbackSearch])。
+     * 取消(CancellationException)原样穿透 —— 用户停止不能被降级逻辑吞掉。
+     */
+    private suspend fun webSearch(argsJson: String): ToolOutcome {
         val q = JSONObject(argsJson).optString("query").trim()
         if (q.isEmpty()) return missing("web_search", "query")
+        val key = searchKey.apiKey()
+        if (key.isBlank()) {
+            return fallbackSearch(q, note = NO_KEY_NOTE)
+        }
+        val hits = try {
+            exaSearch(q, key)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 端点抛出的一切(401/429/5xx/超时)都降级:原因写进结果,用户看得到、模型也不至于重试同一把密钥
+            return fallbackSearch(
+                q,
+                note = "(搜索 API 暂不可用(" + searchFailureReason(e) +
+                    "),已降级到免钥通道;可在「设置 → 集成 → 联网搜索」检查密钥)",
+                primary = e,
+            )
+        }
+        if (hits.isEmpty()) {
+            return fallbackSearch(q, note = "(搜索 API 没有返回结果,以下为免钥通道的结果)")
+        }
+        return ToolOutcome(formatHits(q, hits))
+    }
+
+    /**
+     * Exa 搜索:自然语言查询 + highlights(每条结果按查询挑出最相关的片段)。
+     * 只看 `results[]`,别的字段(成本、耗时)不进模型上下文。
+     */
+    private fun exaSearch(q: String, key: String): List<SearchHit> {
+        val body = JSONObject()
+            .put("query", q)
+            // type=auto:Exa 自己选检索方式(关键词/语义),比固定 neural 在「版本号/报错文本」类查询上稳
+            .put("type", "auto")
+            .put("numResults", EXA_RESULTS)
+            .put("contents", JSONObject().put("highlights", true))
+            .toString()
         val req = Request.Builder()
-            .url("https://api.duckduckgo.com/?q=" + urlEncode(q) + "&format=json&no_html=1&skip_disambig=1")
+            .url(exaEndpoint)
+            .header("x-api-key", key)
+            .header("Accept", "application/json")
             .header("User-Agent", FreebuffApi.USER_AGENT)
-            .get()
+            .post(body.toRequestBody(JSON_MEDIA))
             .build()
         client.newCall(req).execute().use { r ->
             val text = r.body?.string().orEmpty()
             if (!r.isSuccessful) throw ApiError.Http(r.code, text.take(200))
-            val o = JSONObject(text)
-            val sb = StringBuilder()
-            o.optString("AbstractText").takeIf { it.isNotBlank() }?.let { sb.append(it) }
-            val related = o.optJSONArray("RelatedTopics") ?: JSONArray()
-            var n = 0
-            for (i in 0 until related.length()) {
-                if (n >= 5) break
-                val t = related.optJSONObject(i) ?: continue
-                val txt = t.optString("Text")
-                val url = t.optString("FirstURL")
-                if (txt.isBlank() || url.isBlank()) continue
-                if (sb.isNotEmpty()) sb.append("\n")
-                sb.append(n + 1).append(". ").append(txt.take(160)).append("  ").append(url)
-                n++
+            val arr = JSONObject(text).optJSONArray("results") ?: JSONArray()
+            return (0 until arr.length()).mapNotNull { i ->
+                val o = arr.optJSONObject(i) ?: return@mapNotNull null
+                val url = o.text("url").ifBlank { o.text("id") }
+                if (url.isBlank()) return@mapNotNull null
+                val excerpts = o.optJSONArray("highlights")
+                    ?.let { h -> (0 until h.length()).mapNotNull { (h.opt(it) as? String)?.takeIf { s -> s.isNotBlank() } } }
+                    .orEmpty()
+                SearchHit(
+                    title = o.text("title").ifBlank { url },
+                    url = url,
+                    snippet = excerpts.joinToString(" … ").replace(Regex("\\s+"), " "),
+                    published = o.text("publishedDate").take(10),
+                )
             }
-            if (sb.isEmpty()) sb.append("未找到「").append(q).append("」的结果,可换关键词或用 github/web_fetch 工具补充。")
-            return ToolOutcome(sb.toString())
         }
+    }
+
+    /**
+     * 免钥通道(DuckDuckGo Instant Answer):只有主题摘要 + 相关条目,覆盖不了普通关键词,
+     * 所以它现在只当降级,/web_search 的主路是 Exa。
+     *
+     * 只在**两条通道都不通**时升级成错误信封([primary] 非空说明主路也失败过):
+     * 那时手上一条结果、一条链接都没有,给模型留一段空话不如给一张带处方的信封 ——
+     * 它会去 web_fetch 已知链接或换关键词,而不是把同样的搜索再发一遍。
+     */
+    private fun fallbackSearch(q: String, note: String, primary: Exception? = null): ToolOutcome {
+        val req = Request.Builder()
+            .url(fallbackEndpoint + "?q=" + urlEncode(q) + "&format=json&no_html=1&skip_disambig=1")
+            .header("User-Agent", FreebuffApi.USER_AGENT)
+            .get()
+            .build()
+        val sb = StringBuilder(note).append("\n联网搜索「").append(q).append("」:")
+        var found = false
+        try {
+            client.newCall(req).execute().use { r ->
+                val text = r.body?.string().orEmpty()
+                if (!r.isSuccessful) throw ApiError.Http(r.code, text.take(200))
+                val o = JSONObject(text)
+                o.optString("AbstractText").takeIf { it.isNotBlank() }?.let {
+                    sb.append("\n").append(it.take(600))
+                    found = true
+                }
+                val related = o.optJSONArray("RelatedTopics") ?: JSONArray()
+                var n = 0
+                for (i in 0 until related.length()) {
+                    if (n >= 5) break
+                    val t = related.optJSONObject(i) ?: continue
+                    val txt = t.optString("Text")
+                    val url = t.optString("FirstURL")
+                    if (txt.isBlank() || url.isBlank()) continue
+                    sb.append("\n").append(n + 1).append(". ").append(txt.take(160)).append("  ").append(url)
+                    n++
+                    found = true
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 降级通道也失败:主路也失败过就没什么可给的了 → 错误信封;否则(未配置密钥 / 主路空结果)
+            // 仍是一条非错误结果,末尾说明两条路都没拿到内容 + 下一步
+            if (primary == null) {
+                return ToolOutcome(
+                    sb.append("\n降级通道也失败了(").append(searchFailureReason(e))
+                        .append(");可直接用 web_fetch 打开已知链接,或换关键词再试。").toString(),
+                )
+            }
+            return ToolOutcome(
+                ToolErrors.report(
+                    kind = searchErrorKind(primary),
+                    tool = "web_search",
+                    problem = "主路搜索 API 失败(" + searchFailureReason(primary) + ")," +
+                        "免钥降级通道也失败了(" + searchFailureReason(e) + "),这次没有任何结果",
+                    fix = "换一个更短、更具体的关键词重试一次,或直接用 web_fetch 打开已知链接",
+                    example = "{\"query\":\"okhttp 5 migration\"}",
+                ),
+                isError = true,
+            )
+        }
+        if (!found) sb.append("\n找不到「").append(q).append("」的条目:换个关键词,或用 web_fetch 打开已知链接。")
+        return ToolOutcome(sb.toString())
+    }
+
+    /** 搜索失败按状态码分级:密钥错要用户去修,限流等一会儿,其余算服务不可用。 */
+    private fun searchErrorKind(e: Throwable): ToolErrors.Kind = when (e) {
+        is ApiError.Http -> when {
+            e.code == 401 || e.code == 403 -> ToolErrors.Kind.AUTH
+            e.code == 429 -> ToolErrors.Kind.RATE_LIMIT
+            else -> ToolErrors.Kind.NETWORK
+        }
+        else -> ToolErrors.Kind.NETWORK
+    }
+
+    /**
+     * 取字符串字段,把 JSON null(org.json 会拼成字面量 "null")归为空白。
+     * 不处理的话,`title: null` 的结果会以标题「null」出现在结果里;`url: null` 更糟 ——
+     * 它会被当成「有链接」的命中。
+     */
+    private fun JSONObject.text(key: String): String =
+        optString(key).takeIf { it.isNotBlank() && it != "null" }.orEmpty()
+
+    /** 降级原因只给短标签:不带 URL、不带响应体,避免把密钥或大段 HTML 带进上下文。 */
+    private fun searchFailureReason(e: Throwable): String = when (e) {
+        is ApiError.Http -> "HTTP " + e.code
+        is ApiError.Timeout -> "请求超时"
+        is ApiError.NotConfigured -> "缺少配置"
+        else -> (e as? ApiError)?.userMessage ?: e.message ?: e::class.java.simpleName
+    }
+
+    /** 主路结果的统一格式:序号 + 标题(+ 日期) + 链接 + 命中片段。 */
+    private fun formatHits(q: String, hits: List<SearchHit>): String {
+        val sb = StringBuilder("联网搜索「").append(q).append("」:")
+        hits.forEachIndexed { i, h ->
+            sb.append("\n").append(i + 1).append(". ").append(h.title.take(140))
+            if (h.published.isNotBlank()) sb.append(" (").append(h.published).append(")")
+            sb.append("\n   ").append(h.url)
+            if (h.snippet.isNotBlank()) sb.append("\n   ").append(h.snippet.take(280))
+        }
+        return sb.toString()
     }
 
     /* ---------------- 网页抓取 ---------------- */

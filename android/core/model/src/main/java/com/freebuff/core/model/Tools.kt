@@ -8,7 +8,8 @@ import org.json.JSONObject
  *
  * 工具全部来自开源生态的公开协议,App 端真实执行(无需自建后端):
  * - GitHub REST API(github_* )—— 只读部分匿名可读公开数据;**写操作走已授权的 token**
- * - DuckDuckGo Instant Answer API(web_search)—— 免钥搜索
+ * - Exa 搜索 API(web_search)—— 真实搜索结果(标题/链接/命中片段),密钥加密存本机;
+ *   未配置或调用失败时**自动降级**到 DuckDuckGo Instant Answer(免钥摘要通道)
  * - 通用网页抓取(web_fetch)、本地计算(calculator)、本地时间(current_time)
  *
  * 设计对应 agent-architecture.md §1 的注册表思想:工具 = 名称 + 说明书 + 参数 Schema
@@ -165,9 +166,11 @@ object DefaultTools {
             name = "web_search",
             label = "联网搜索",
             permission = ToolPermission.ALLOW,
-            description = "联网搜索:关键词 → 主题摘要 + 相关条目(没搜到时会提示换词)。" +
+            description = "联网搜索:关键词 → 标题 + 链接 + 与查询相关的片段(每条都带 URL,可直接用 web_fetch 展开)。" +
                 "适合查事实、新闻、概念、最新动态。用户已经给出具体网址时不要用它,直接 web_fetch;" +
-                "要找公开仓库或读仓库里的文件、README 时,改用 github_search_repositories / github_get_readme / github_get_file。",
+                "要找公开仓库或读仓库里的文件、README 时,改用 github_search_repositories / github_get_readme / github_get_file。" +
+                "结果里若出现「免钥摘要通道」字样,说明这次没走完整搜索(未配置密钥或搜索服务暂不可用)," +
+                "可换关键词再试,或直接用结果里的链接抓正文。",
             example = "web_search({\"query\": \"android compose 最新版本\"})",
             params = listOf(
                 AgentTool.Param(

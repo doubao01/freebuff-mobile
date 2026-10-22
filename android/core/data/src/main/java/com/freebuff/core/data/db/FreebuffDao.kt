@@ -12,13 +12,32 @@ import kotlinx.coroutines.flow.Flow
 interface FreebuffDao {
 
     // ---------- sessions ----------
-    @Transaction
+
+    /**
+     * 只订阅会话行(不带消息)。
+     *
+     * 首页列表只需要标题/预览/时间 —— 之前用的是带 @Relation 的「会话 + 全部消息」查询,
+     * 于是流式回复每写一次消息都会让整张列表(含所有会话的全部消息)重查一遍。
+     * 这条查询只依赖 sessions 表,消息写入不再触发它。
+     */
     @Query("SELECT * FROM sessions ORDER BY sort DESC")
-    fun observeSessionsWithMessages(): Flow<List<SessionWithMessages>>
+    fun observeSessions(): Flow<List<SessionEntity>>
+
+    /** 单个会话 + 它的消息(会话页专用:只订阅当前打开的那一个会话)。 */
+    @Transaction
+    @Query("SELECT * FROM sessions WHERE id = :id LIMIT 1")
+    fun observeSessionWithMessages(id: String): Flow<SessionWithMessages?>
 
     @Transaction
     @Query("SELECT * FROM sessions WHERE id = :id LIMIT 1")
     suspend fun sessionWithMessages(id: String): SessionWithMessages?
+
+    /**
+     * 正文命中关键词的会话 id(搜索时按需调一次)。
+     * 不为首页常驻加载全库消息:只有用户真的输入了关键词才扫这一遍。
+     */
+    @Query("SELECT DISTINCT sessionId FROM messages WHERE text LIKE '%' || :keyword || '%'")
+    suspend fun sessionIdsMatching(keyword: String): List<String>
 
     @Query("SELECT * FROM sessions")
     suspend fun allSessions(): List<SessionEntity>
@@ -37,6 +56,14 @@ interface FreebuffDao {
 
     @Query("SELECT * FROM messages WHERE sessionId = :sessionId ORDER BY sort ASC")
     fun observeMessages(sessionId: String): Flow<List<MessageEntity>>
+
+    /** 会话里最后一条指定角色的消息(流式写入的目标行)。 */
+    @Query("SELECT * FROM messages WHERE sessionId = :sessionId AND role = :role ORDER BY sort DESC LIMIT 1")
+    suspend fun lastMessageOfRole(sessionId: String, role: String): MessageEntity?
+
+    /** 单条消息的排序号。替换一条消息不应为它加载整个会话的消息(一次替换 = 一次全表读)。 */
+    @Query("SELECT sort FROM messages WHERE sessionId = :sessionId AND id = :id LIMIT 1")
+    suspend fun messageSort(sessionId: String, id: String): Long?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertMessages(messages: List<MessageEntity>)

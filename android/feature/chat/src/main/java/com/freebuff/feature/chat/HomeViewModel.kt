@@ -50,21 +50,49 @@ class HomeViewModel @Inject constructor(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    /** 正文命中关键词的会话 id。只在用户真的输入了关键词后才查一次(见 [updateQuery])。 */
+    private val messageMatches = MutableStateFlow<Set<String>>(emptySet())
+    private var searchJob: Job? = null
+
     /** 官方目录启动拉取:与对话页一致,网关未配置时静默跳过。 */
     init {
         viewModelScope.launch { catalog.refreshIfNeeded() }
     }
 
-    fun updateQuery(q: String) { _query.value = q }
+    /**
+     * 更新搜索词。
+     *
+     * 标题/预览的匹配是纯内存过滤(列表本身只订会话行),**正文**的匹配改为按需查一次:
+     * 早期实现让首页常驻订阅「全部会话 + 全部消息」,只为在输入框里搜正文 ——
+     * 于是流式回复每写一次消息,首页都要把全库消息重查一遍。
+     */
+    fun updateQuery(q: String) {
+        _query.value = q
+        searchJob?.cancel()
+        val kw = q.trim()
+        if (kw.isEmpty()) {
+            messageMatches.value = emptySet()
+            return
+        }
+        searchJob = viewModelScope.launch {
+            // 防抖:逐字输入时不必每个键都扫一遍正文(LIKE 查询用不上索引)
+            delay(SEARCH_DEBOUNCE_MS)
+            messageMatches.value = sessionRepo.sessionIdsMatching(kw)
+        }
+    }
 
-    /** 会话流 × 搜索词:标题或预览包含关键字即命中。 */
-    val sessions: StateFlow<List<Session>> = combine(sessionRepo.sessions, _query) { list, q ->
+    /** 会话流 × 搜索词:标题/预览(内存)+ 正文(按需查询过的命中集)。 */
+    val sessions: StateFlow<List<Session>> = combine(
+        sessionRepo.sessionSummaries,
+        _query,
+        messageMatches,
+    ) { list, q, hits ->
         val kw = q.trim()
         if (kw.isEmpty()) list
         else list.filter {
             it.title.contains(kw, ignoreCase = true) ||
                 it.preview.contains(kw, ignoreCase = true) ||
-                it.messages.any { m -> m.text.contains(kw, ignoreCase = true) }
+                it.id in hits
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -112,5 +140,8 @@ class HomeViewModel @Inject constructor(
          * 又不至于让提示条长期压在列表底部。
          */
         const val UNDO_WINDOW_MS = 8000L
+
+        /** 正文搜索的防抖窗口:输入停顿后再查,不跟着每个按键扫描正文。 */
+        const val SEARCH_DEBOUNCE_MS = 150L
     }
 }

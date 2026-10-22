@@ -14,6 +14,8 @@ import com.freebuff.core.model.MsgStep
 import com.freebuff.core.model.MsgSteps
 import com.freebuff.core.model.ToolCard
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -212,19 +214,106 @@ class SessionRepositoryTest {
         assertEquals("改写后的问题", dao.sessions[s.id]!!.preview)
     }
 
+    /* ---------------- 轻量读取路径:首页不再依赖全库消息 ---------------- */
+
+    @Test
+    fun `会话摘要流不带消息`() = runTest {
+        val s = repo.create("A")
+        repo.appendMessages(
+            s.id,
+            listOf(ChatMsg("m1", "user", text = "第一个问题"), ChatMsg("m2", "agent", text = "回答")),
+        )
+
+        val summaries = repo.sessionSummaries.first()
+
+        assertEquals(1, summaries.size)
+        assertTrue("摘要流只给列表看的字段,不该带消息正文", summaries.single().messages.isEmpty())
+        assertEquals("第一个问题", summaries.single().preview)
+    }
+
+    @Test
+    fun `预览是列表唯一的正文来源, 没有用户消息时退到批内末条`() = runTest {
+        val s = repo.create("A")
+
+        // 只有助手消息的批次(如重新生成):预览要跟上,否则列表副标题是空的
+        repo.appendMessages(s.id, listOf(ChatMsg("m1", "agent", text = "助手先说了一句")))
+        assertEquals("助手先说了一句", dao.sessions[s.id]!!.preview)
+
+        // 空占位消息不覆盖已有预览(发送时占位与用户消息同批落库,这条是单批追加的保安网)
+        repo.appendMessages(s.id, listOf(ChatMsg("m2", "agent", text = "")))
+        assertEquals("助手先说了一句", dao.sessions[s.id]!!.preview)
+    }
+
+    @Test
+    fun `单会话流只带这一个会话的消息`() = runTest {
+        val a = repo.create("A")
+        val b = repo.create("B")
+        repo.appendMessages(a.id, listOf(ChatMsg("a1", "user", text = "A 的问题")))
+        repo.appendMessages(b.id, listOf(ChatMsg("b1", "user", text = "B 的问题")))
+
+        val session = repo.observeSession(a.id).first()!!
+
+        assertEquals(listOf("a1"), session.messages.map { it.id })
+    }
+
+    @Test
+    fun `正文搜索只返回命中的会话 id, 空关键词不查库`() = runTest {
+        val a = repo.create("A")
+        val b = repo.create("B")
+        repo.appendMessages(a.id, listOf(ChatMsg("a1", "user", text = "聊聊 Compose 的稳定性")))
+        repo.appendMessages(b.id, listOf(ChatMsg("b1", "user", text = "无关内容")))
+
+        assertEquals(setOf(a.id), repo.sessionIdsMatching("Compose"))
+        assertTrue("空关键词不该走到 DAO", repo.sessionIdsMatching("   ").isEmpty())
+    }
+
+    @Test
+    fun `按角色取最后一条消息, 替换只动目标行`() = runTest {
+        val s = repo.create("A")
+        repo.appendMessages(
+            s.id,
+            listOf(ChatMsg("m1", "user", text = "问题"), ChatMsg("m2", "agent", text = "回答")),
+        )
+
+        val last = repo.lastMessage(s.id, "agent")!!
+        assertEquals("m2", last.id)
+        assertEquals("回答", last.text)
+
+        repo.replaceMessage(s.id, "m2", last.copy(text = "回答(改)"))
+        assertEquals(listOf("问题", "回答(改)"), repo.get(s.id)!!.messages.map { it.text })
+    }
+
     /* ---------------- 全内存 DAO(会话/消息真实读写,其余无需关心) ---------------- */
     private class MemDao : FreebuffDao {
         val sessions = LinkedHashMap<String, SessionEntity>()
         val messages = LinkedHashMap<String, List<MessageEntity>>()
         val settings = LinkedHashMap<String, SettingEntity>()
 
-        override fun observeSessionsWithMessages(): Flow<List<SessionWithMessages>> =
-            flowOf(sessions.values.map { SessionWithMessages(it, messages[it.id].orEmpty()) })
+        /**
+         * 会话行流:按 sort 倒序(与真实 DAO 的 `ORDER BY sort DESC` 一致)。
+         * 用 flow { } 而不是 flowOf { } —— 后者在**建流时就固定了快照**,与 Room 边写边发的行为不符。
+         */
+        override fun observeSessions(): Flow<List<SessionEntity>> =
+            flow { emit(sessions.values.sortedByDescending { it.sort }) }
+
+        override fun observeSessionWithMessages(id: String): Flow<SessionWithMessages?> = flow {
+            val s = sessions[id]
+            emit(if (s == null) null else SessionWithMessages(s, messages[id].orEmpty().sortedBy { it.sort }))
+        }
 
         override suspend fun sessionWithMessages(id: String): SessionWithMessages? {
             val s = sessions[id] ?: return null
             return SessionWithMessages(s, messages[id].orEmpty().sortedBy { it.sort })
         }
+
+        override suspend fun sessionIdsMatching(keyword: String): List<String> =
+            messages.filterValues { list -> list.any { it.text.contains(keyword) } }.keys.toList()
+
+        override suspend fun lastMessageOfRole(sessionId: String, role: String): MessageEntity? =
+            messages[sessionId].orEmpty().filter { it.role == role }.maxByOrNull { it.sort }
+
+        override suspend fun messageSort(sessionId: String, id: String): Long? =
+            messages[sessionId].orEmpty().firstOrNull { it.id == id }?.sort
 
         override suspend fun allSessions(): List<SessionEntity> = sessions.values.toList()
         override suspend fun session(id: String): SessionEntity? = sessions[id]

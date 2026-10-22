@@ -210,4 +210,20 @@ Git 账号通过 GitHub OAuth 设备流授权,可直接读取你的仓库列表�
     <string name="set_update_latest_suffix"> 已是最新</string>
     <string name="set_update_source_label_prefix">更新源 </string>
     <string name="set_update_open_installer_failed">无法拉起系统安装程序,请手动打开:</string>
+    <string name="set_search_title">联网搜索</string>
+    <string name="set_search_sub">web_search 工具使用的密钥(Exa)</string>
+    <string name="set_search_row_sub">真实搜索 API;未配置时降级为免钥摘要通道</string>
+    <string name="set_search_on">已启用</string>
+    <string name="set_search_off">未配置</string>
+    <string name="set_search_configured">已配置密钥</string>
+    <string name="set_search_not_configured">尚未配置</string>
+    <string name="set_search_status_hint">在本机加密保存(Android Keystore),保存后不再回显</string>
+    <string name="set_search_key_label">Exa API Key</string>
+    <string name="set_search_save">保存密钥</string>
+    <string name="set_search_clear">清除</string>
+    <string name="set_search_key_saved">搜索密钥已保存</string>
+    <string name="set_search_key_cleared">搜索密钥已清除</string>
+    <string name="set_search_key_empty">请先粘贴密钥;空白保存不会生效</string>
+    <string name="set_search_help">不填密钥时,联网搜索会降级为只有摘要的免钥通道。密钥被拒、限流或服务不可用时,结果里会写明原因并自动降级——搜索不会直接失败。</string>
+    <string name="set_search_get_key">到 dashboard.exa.ai 获取密钥 →</string>
 </resources>

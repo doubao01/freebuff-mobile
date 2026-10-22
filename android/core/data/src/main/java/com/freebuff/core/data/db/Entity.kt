@@ -32,8 +32,13 @@ data class SessionEntity(
     @ColumnInfo(defaultValue = "0") val createdAt: Long = 0L,
 )
 
-/** 消息表。sort 为会话内顺序;steps/tools 等结构化字段用 JSON 文本存储;reasoning 为思考(思维链)内容。 */
-@Entity(tableName = "messages")
+/**
+ * 消息表。sort 为会话内顺序;steps/tools 等结构化字段用 JSON 文本存储;reasoning 为思考(思维链)内容。
+ *
+ * sessionId 有索引:流式回复的每一次写入、以及会话页的订阅都按 sessionId 取行。
+ * 没有它时每次流式写入都是 messages 全表扫描(会话越多越慢),而流式路径恰好是写入最密的。
+ */
+@Entity(tableName = "messages", indices = [Index("sessionId")])
 data class MessageEntity(
     @PrimaryKey val id: String,
     val sessionId: String,

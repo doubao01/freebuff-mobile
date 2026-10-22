@@ -29,11 +29,40 @@ data class DeletedSession(val session: Session, val sort: Long)
 class SessionRepository @Inject constructor(
     private val dao: FreebuffDao,
 ) {
-    val sessions: Flow<List<Session>> = dao.observeSessionsWithMessages()
-        .map { list -> list.map { it.toDomain() } }
+    /**
+     * 会话列表(只含会话行,不带消息)。
+     *
+     * 首页/设置页只需要标题、预览、时间;它们用这条流而不是「会话 + 全部消息」的聚合查询 ——
+     * 否则流式回复的每一次消息写入都会让整张列表连全库消息一起重查(见 MessageEntity 的索引注释)。
+     * 需要消息的页面用 [observeSession](单个会话)或 [get]。
+     */
+    val sessionSummaries: Flow<List<Session>> = dao.observeSessions()
+        .map { list -> list.map { it.toDomain(emptyList()) } }
         .distinctUntilChanged()
 
+    /**
+     * 订阅**单个**会话与它的消息(会话页专用)。
+     * 只依赖这一条会话的行与消息:别的会话在写、别的消息在落库,都不会重查本会话的历史。
+     */
+    fun observeSession(id: String): Flow<Session?> = dao.observeSessionWithMessages(id)
+        .map { it?.toDomain() }
+        .distinctUntilChanged()
+
+    /**
+     * 正文命中关键词的会话 id。搜索是按需动作(见 HomeViewModel):
+     * 列表本身不为搜索常驻加载全库消息。
+     */
+    suspend fun sessionIdsMatching(keyword: String): Set<String> {
+        val kw = keyword.trim()
+        if (kw.isEmpty()) return emptySet()
+        return dao.sessionIdsMatching(kw).toSet()
+    }
+
     suspend fun get(id: String): Session? = dao.sessionWithMessages(id)?.toDomain()
+
+    /** 会话里最后一条指定角色的消息(流式写入用:只取一行,不加载整个会话)。 */
+    suspend fun lastMessage(sessionId: String, role: String): ChatMsg? =
+        dao.lastMessageOfRole(sessionId, role)?.toDomain()
 
     /** 创建空会话,返回带 id 的 Session(记下创建时刻,列表按它分时间组)。 */
     suspend fun create(title: String): Session {
@@ -52,18 +81,24 @@ class SessionRepository @Inject constructor(
         val start = MessageOps.nextSort(existing)
         val entities = messages.mapIndexed { i, m -> m.toEntity(sessionId, start + i) }
         dao.upsertMessages(entities)
-        val lastText = messages.lastOrNull { it.role == "user" }?.text.orEmpty()
+        // 预览取「最后一条用户消息」;这批里没有用户消息时退到批内末条:列表页不再加载消息,
+        // 预览列就是首页唯一的正文来源(见 SessionRepository.sessionSummaries)
+        val lastText = messages.lastOrNull { it.role == "user" }?.text?.takeIf { it.isNotBlank() }
+            ?: messages.lastOrNull()?.text.orEmpty()
         val preview = if (lastText.isNotBlank()) lastText.take(30) + (if (lastText.length > 30) "…" else "") else cur.preview
         dao.upsertSession(cur.copy(preview = preview))
         return dao.sessionWithMessages(sessionId)?.toDomain()
     }
 
-    /** 替换某条消息(流式回复写入)。 */
+    /**
+     * 替换某条消息(流式回复写入 —— 全应用写入最密的路径)。
+     *
+     * 只查这一条的排序号,不再为一次替换加载整个会话的消息并解析其 JSON:
+     * 节流后仍每秒写数次,旧写法把「写一个 token」变成了 O(会话消息数)。
+     */
     suspend fun replaceMessage(sessionId: String, messageId: String, updated: ChatMsg) {
-        val entities = dao.sessionWithMessages(sessionId)?.messages.orEmpty()
-        entities.firstOrNull { it.id == messageId }?.let { old ->
-            dao.upsertMessages(listOf(updated.toEntity(sessionId, old.sort)))
-        }
+        val sort = dao.messageSort(sessionId, messageId) ?: return
+        dao.upsertMessages(listOf(updated.toEntity(sessionId, sort)))
     }
 
     /** 批量删除消息(消息级操作:单条删除、编辑重发时的截断)。序号留空洞,不重排。 */

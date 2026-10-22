@@ -13,6 +13,7 @@ import com.freebuff.core.data.repository.GitAuthRepository
 import com.freebuff.core.data.repository.MemoryRepository
 import com.freebuff.core.data.repository.ModelCatalogRepository
 import com.freebuff.core.data.repository.RealGitAuthRepository
+import com.freebuff.core.data.repository.SearchKeyRepository
 import com.freebuff.core.data.repository.SessionRepository
 import com.freebuff.core.data.repository.SettingsRepository
 import com.freebuff.core.data.repository.UpdateRepository
@@ -104,6 +105,16 @@ object DataModule {
     @Provides
     @Singleton
     fun provideGitTokenProvider(real: RealGitAuthRepository): com.freebuff.core.data.repository.GitTokenProvider = real
+
+    /**
+     * 执行层读搜索 API 密钥(web_search 的主路);由 [SearchKeyRepository] 实现 ——
+     * 密文存库、Keystore 解密,未配置时返回空串(执行器据此降级)。
+     */
+    @Provides
+    @Singleton
+    fun provideSearchKeyProvider(
+        real: SearchKeyRepository,
+    ): com.freebuff.core.data.repository.SearchKeyProvider = real
 
     @Provides
     @Singleton

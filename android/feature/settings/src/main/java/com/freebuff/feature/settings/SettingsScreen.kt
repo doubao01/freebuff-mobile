@@ -101,6 +101,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
     val themeMode by viewModel.themeMode.collectAsState()
     val modelName by viewModel.modelName.collectAsState()
     val git by viewModel.git.collectAsState()
+    val searchConfigured by viewModel.searchKeyConfigured.collectAsState()
     val repoParse by viewModel.repoParse.collectAsState()
     val toolsEnabled by viewModel.toolsEnabled.collectAsState()
     val memoryEnabled by viewModel.memoryEnabled.collectAsState()
@@ -227,6 +228,16 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                     if (repoParse == "strict") 0 else 1) { i ->
                     viewModel.setRepoParse(if (i == 0) "strict" else "loose")
                 }
+                Spacer(Modifier.height(14.dp))
+                SetRow(
+                    icon = "◎",
+                    title = stringResource(R.string.set_search_title),
+                    sub = stringResource(R.string.set_search_row_sub),
+                    trailing = if (searchConfigured) stringResource(R.string.set_search_on) else stringResource(R.string.set_search_off),
+                    accent = searchConfigured,
+                    dim = !searchConfigured,
+                    onClick = { navigator.openSheet(AppNavState.SHEET_SEARCH) },
+                )
                 Spacer(Modifier.height(14.dp))
                 SetRow(
                     icon = "▣",

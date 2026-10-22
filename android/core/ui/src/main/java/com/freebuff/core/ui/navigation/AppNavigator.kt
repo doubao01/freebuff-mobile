@@ -27,6 +27,7 @@ data class AppNavState(
         const val SHEET_TASK = "task-wizard"
         const val SHEET_SESSION_MENU = "sess-menu"
         const val SHEET_GIT = "git"
+        const val SHEET_SEARCH = "search"
         const val SHEET_CUSTOM_MODELS = "custom-models"
         const val SHEET_CUSTOM_FORM = "custom-form"
         const val SHEET_UPDATE = "update"

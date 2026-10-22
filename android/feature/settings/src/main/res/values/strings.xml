@@ -212,4 +212,20 @@ Chats, settings and custom models live in an on-device database; API keys and Gi
     <string name="set_update_latest_suffix"> is up to date</string>
     <string name="set_update_source_label_prefix">Update source </string>
     <string name="set_update_open_installer_failed">Could not open the system installer — open it manually:</string>
+    <string name="set_search_title">Web search</string>
+    <string name="set_search_sub">Key used by the web_search tool (Exa)</string>
+    <string name="set_search_row_sub">Real search API; falls back to a keyless summary channel</string>
+    <string name="set_search_on">Enabled</string>
+    <string name="set_search_off">Not set</string>
+    <string name="set_search_configured">Key configured</string>
+    <string name="set_search_not_configured">No key yet</string>
+    <string name="set_search_status_hint">Stored encrypted on this device (Android Keystore) and never shown again</string>
+    <string name="set_search_key_label">Exa API Key</string>
+    <string name="set_search_save">Save key</string>
+    <string name="set_search_clear">Clear</string>
+    <string name="set_search_key_saved">Search key saved</string>
+    <string name="set_search_key_cleared">Search key cleared</string>
+    <string name="set_search_key_empty">Paste a key first — saving an empty field does nothing</string>
+    <string name="set_search_help">Without a key, web searches fall back to a summary-only channel. If the key is rejected or rate-limited, results say so and the same fallback is used — a search never fails outright.</string>
+    <string name="set_search_get_key">Get a key at dashboard.exa.ai →</string>
 </resources>

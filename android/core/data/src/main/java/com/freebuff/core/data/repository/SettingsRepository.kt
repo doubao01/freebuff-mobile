@@ -45,6 +45,12 @@ class SettingsRepository @Inject constructor(
 
         /** Git OAuth access_token(Keystore 加密后的密文)。 */
         const val KEY_GIT_TOKEN = "gitToken"
+
+        /**
+         * 搜索 API(Exa)密钥:同样是 **Keystore 加密后的密文**,明文不落库。
+         * 读写走 [SearchKeyRepository](加密 / 解密 / 是否已配置都在那里)。
+         */
+        const val KEY_SEARCH_API_KEY = "searchApiKey"
     }
 
     /** Git 状态:直接响应 DB 变更。 */

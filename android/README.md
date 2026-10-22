@@ -63,7 +63,7 @@ android/
   analyst 纯计算),它有自己的上下文与工具白名单、最多 3 轮工具,之后强制收敛成结论;结论压缩后回填主循环,
   卡片显示实时尾部(实现与边界见 [docs/subagent-design.md](docs/subagent-design.md) §12)
 - **数据**:Room 持久化 + 一次性 SharedPreferences 迁移(`freebuff_proto_v1`,带 `migrated_v2` 完成标志,
-  **迁移只执行一次**——清空会话后重启不会复活演示会话,旧偏好也不会覆盖后来的修改);API Key 与 Git token 经 Keystore 加密
+  **迁移只执行一次**——清空会话后重启不会复活演示会话,旧偏好也不会覆盖后来的修改);API Key(Git token / 自定义模型 / 搜索接口)经 Keystore 加密
 
 ## 后端接入(网络层与错误处理)
 

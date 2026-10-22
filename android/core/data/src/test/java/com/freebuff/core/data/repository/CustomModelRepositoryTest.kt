@@ -179,7 +179,11 @@ class CustomModelRepositoryTest {
 
     // ---------- DAO 桩:本测试仅覆盖不触碰数据库的网络/纯逻辑方法 ----------
     private class NoopDao : FreebuffDao {
-        override fun observeSessionsWithMessages(): Flow<List<SessionWithMessages>> = flowOf(emptyList())
+        override fun observeSessions(): Flow<List<SessionEntity>> = flowOf(emptyList())
+        override fun observeSessionWithMessages(id: String): Flow<SessionWithMessages?> = flowOf(null)
+        override suspend fun sessionIdsMatching(keyword: String): List<String> = emptyList()
+        override suspend fun lastMessageOfRole(sessionId: String, role: String): MessageEntity? = null
+        override suspend fun messageSort(sessionId: String, id: String): Long? = null
         override suspend fun sessionWithMessages(id: String): SessionWithMessages? = null
         override suspend fun allSessions(): List<SessionEntity> = emptyList()
         override suspend fun session(id: String): SessionEntity? = null

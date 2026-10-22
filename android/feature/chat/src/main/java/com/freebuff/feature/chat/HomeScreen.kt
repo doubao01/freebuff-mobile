@@ -265,7 +265,8 @@ private fun SessionRow(
                     .clearAndSetSemantics { contentDescription = menuCd }
                     .padding(horizontal = 8.dp, vertical = 2.dp))
         }
-        Text(session.preview.ifEmpty { session.messages.lastOrNull()?.text ?: "" },
+        // 列表只订会话行(不带消息):预览就是唯一正文来源,写入侧已经保证它不为空
+        Text(session.preview,
             color = t.text2, fontSize = 12.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 4.dp))
     }

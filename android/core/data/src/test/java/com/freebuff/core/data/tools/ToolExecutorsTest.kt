@@ -137,6 +137,33 @@ class ToolExecutorsTest {
     }
 
     @Test
+    fun `宿主抛取消异常时原样穿透执行器 不被当成工具失败`() = runBlocking {
+        // 用户按停止 → 操作协程被取消 → 正在跑的宿主工具(记忆/子代理)抛 CancellationException。
+        // 它**不能**被 errorFor 改写成一张「工具失败」信封:那会让主循环以为只是一次普通失败,
+        // 继续把轮次跑下去(点停止却还在生成)。修正是执行器里先 catch CancellationException 再抛。
+        val host = object : com.freebuff.core.model.ToolHost {
+            override suspend fun executeHostTool(
+                call: ToolCallReq,
+                attempt: Int,
+            ): com.freebuff.core.model.ToolOutcome? =
+                throw kotlinx.coroutines.CancellationException("用户停止")
+        }
+        val thrown = try {
+            ex.execute(
+                ToolCallReq("h4", "memory_recall", """{"user_id":"local","query":"偏好"}"""),
+                host = host,
+            )
+            null
+        } catch (t: Throwable) {
+            t
+        }
+        assertTrue(
+            "取消必须穿透执行器,而不是变成一次正常返回;实际: $thrown",
+            thrown is kotlinx.coroutines.CancellationException,
+        )
+    }
+
+    @Test
     fun `current_time 返回可读时间`() = runBlocking {
         val r = ex.execute(ToolCallReq("c6", "current_time", "{}"))
         assertFalse(r.isError)

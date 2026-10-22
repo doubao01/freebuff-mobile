@@ -81,6 +81,21 @@ sealed interface ApiResult<out T> {
 - 授权流程可取消(取消收集即中止轮询);超时按 `expires_in` 判定并提示重新发起。
 - 仓库读取失败在发起任务向导中展示原因并提供「重试」,不静默失败。
 
+### 3.2.1 联网搜索密钥(Exa)
+
+`web_search` 的主路是 `POST https://api.exa.ai/search`(头 `x-api-key`;体内 `type=auto` + `contents.highlights`,
+只解析 `results[]` 的 title / url / highlights / publishedDate)。key 由用户在「设置 → 集成 → 联网搜索」录入,
+存储路径与 Git token 一致:
+
+- **明文只在内存**(`SearchKeyRepository.apiKey()`),落库的是 `CryptoManager`(Android Keystore,AES/GCM)密文;
+  备份/换机拷走的库文件里没有可用密钥,应用进程也拿不到 Keystore 里的密钥材料。
+- **不回显**:设置页只读 `configured: Flow<Boolean>(密文是否非空)`,输入框永远从空白开始。
+- **解不开就当没配**:换机 / Keystore 被清 / 库被拷走时 `decrypt` 返回空串而不抛异常,
+  执行器据此降级 —— 一条密钥失效不该让工具调用失败。
+- **降级链**(都由 `WebSearchTest` 覆盖):未配密钥 → 免钥摘要(DuckDuckGo IA);主路 401/429/5xx/超时 →
+  免钥摘要 + 短原因(`HTTP 401` 这类标签,不带响应体与密钥);主路空结果 → 补一次免钥;
+  两条都拿不到 → **带处方的错误信封**(换关键词 / 用 `web_fetch` 打开已知链接)。
+
 ### 3.3 对话(ChatRepository)
 
 `POST {endpoint}`(`stream=true`,OpenAI 兼容),按 SSE **帧**解码(`SseDecoder`)后交给 `AgentEventParser`。
@@ -166,7 +181,7 @@ sealed interface ApiResult<out T> {
 
 | 工具 | 权限默认 | 执行 | 能力 | 说明 |
 |---|---|---|---|---|
-| `web_search` | ALLOW | DATA | — | 免钥联网搜索(DuckDuckGo IA) |
+| `web_search` | ALLOW | DATA | — | 真实搜索 API(Exa,密钥 Keystore 加密存本机);未配置/被拒/限流/空结果时降级到免钥摘要通道(DuckDuckGo IA) |
 | `web_fetch` | ALLOW | DATA | — | 抓指定网址正文,截断 4000 字 |
 | `github_search_repositories` | ALLOW | DATA | — | 搜公开仓库 |
 | `github_get_file` | ALLOW | DATA | — | 读仓库内文件;**已连接账号走 contents API(可读私有仓库)**,未连接回落 raw 匿名通道 |
