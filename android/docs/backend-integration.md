@@ -194,6 +194,7 @@ sealed interface ApiResult<out T> {
 | `current_time` | ALLOW | DATA | — | 设备当前日期时间 |
 | `save_memory` | CONFIRM | HOST | MEMORY | 写核心记忆块 |
 | `memory_recall` | ALLOW | HOST | MEMORY | 检索历史记忆 |
+| `write_todos` | ALLOW | HOST | — | 任务清单:逐项 content/status 写进卡片并随消息持久化(见 §3.3.12) |
 | `spawn_subagent` | ALLOW | HOST | — | 派只读子代理(见 §3.3.7) |
 | `task_completed` | ALLOW | DATA | — | 循环收工信号 |
 
@@ -265,7 +266,7 @@ task_completed)豁免:它们是循环唯一的出口,熔断它们反而会锁死
 真机实测(2026-09-26,`case argerr`):模型带一个自造参数 `mode` 调 `calculator` → 端上回信封
 `[工具错误] 类型=参数名不存在/UNKNOWN_PARAM · 工具=calculator / 问题: 参数名 mode 不存在…` →
 mock 断言「信封有处方」PASS → 改对的调用算出 `6*7 = 42` →「按建议改对后执行成功」PASS。
-说明书体积:带工具的轮次每轮注入 **8293 字符**(15 个工具,含示例/枚举/默认值;mock 日志 `tools_chars=`;
+说明书体积:带工具的轮次每轮注入 **9141 字符**(16 个工具,含示例/枚举/默认值;mock 日志 `tools_chars=`;
 `ToolsTest` 里的体积预算是 12000 字符,新增工具后仍在预算内),
 系统提示里的「工具使用约定」约 150 字符(`system_chars` 561 → 683)。
 注意:加字段只加 JSON Schema 的常规关键字(enum/minimum/maximum/default),**不开 `strict` 模式** ——
@@ -443,6 +444,25 @@ mock 的 chunked **永不结束流**(收下请求只写分块、不发终止块)
 - 测试连接:最小 body `POST` 校验连通与鉴权 → `ProbeResult.Success(ms)` / `Fail(reason, code)`。
 - 模型快照:`GET {origin}/v1/models`;连接正常但快照刷新失败时保留旧快照,并以 `ProbeResult.Success.note` 提示原因。
 - API Key 与自定义请求头按记录加密存储;`skipTLS` 仅对显式开启的模型生效。
+
+#### 3.3.12 任务清单(write_todos)
+
+多步任务里,模型用 `write_todos` 维护一份清单;卡片逐项显示状态,并随消息一起落库 ——
+**不新开表、不加迁移**:清单存进该条 assistant 消息已有的 `tools` JSON(卡片多一个 `todos` 字段),
+重开会话、恢复备份都跟着消息走。
+
+- 入参 `todos[]`(`content` + `status`),每次**整份覆盖**;模型若只传变化项,旧条目会消失 ——
+  说明书里把这句话写死,执行结果也再回一遍;
+- 解析宽容:`task`/`title`/`text` 都当 `content`,`done`/`finished`/`已完成`/`进行中` 都归一;
+  认不出的状态按待办处理(为展示字段耗一轮重试不值得);空清单或没有 content 才回错误信封;
+- 上限 20 项、单条 120 字,超出截断(卡片不会比回复还长);
+- `ALLOW` + `HOST`:不弹确认;写的是当前会话最后一条 assistant 消息的卡片,所以走 `ToolHost`
+  (与记忆/子代理同一条路),计划模式下**保留**(它排的就是计划本身);
+- 界面(`ChatScreen.TodoChecklist`):卡片头部显示「已完成/总数」,正文逐项列状态与内容(已完成划掉),
+  收起时最多 5 项、展开看全;状态文案进 `values/` + `values-zh/`;
+- 卡片编解码向后兼容:普通卡片不写 `todos` 字段,旧 JSON 读作空清单。
+- 回归:`TodoListTest`(解析宽容度/上限/摘要)、`ToolCardCodecTest`(逐项状态往返 + 旧数据)、
+  `ToolRegistryTest`(HOST 归属 + 不被计划模式/记忆开关裁掉)。
 
 ### 3.5 版本检查(UpdateRepository)
 

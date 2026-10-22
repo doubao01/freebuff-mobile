@@ -152,4 +152,8 @@
     <string name="chat_cd_open_chat">打开会话</string>
     <string name="chat_cd_composer_mention">插入 @ 提及</string>
     <string name="chat_cd_composer_file">插入文件引用</string>
+
+    <string name="chat_todo_pending">待办</string>
+    <string name="chat_todo_in_progress">进行中</string>
+    <string name="chat_todo_completed">已完成</string>
 </resources>

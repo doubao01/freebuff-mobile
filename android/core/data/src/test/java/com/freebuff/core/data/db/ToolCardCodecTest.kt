@@ -52,6 +52,32 @@ class ToolCardCodecTest {
     }
 
     @Test
+    fun `任务清单随卡片往返 逐项状态不丢`() {
+        val cards = listOf(
+            ToolCard(
+                callId = "t1", tool = com.freebuff.core.model.TodoList.TOOL, input = "共 2 项", state = "done",
+                todos = listOf(
+                    com.freebuff.core.model.TodoList.Item("读 README", com.freebuff.core.model.TodoList.COMPLETED),
+                    com.freebuff.core.model.TodoList.Item("改配置", com.freebuff.core.model.TodoList.IN_PROGRESS),
+                ),
+            ),
+        )
+        val round = JsonCodec.toolCardsFromJson(JsonCodec.toolCardsToJson(cards))
+        assertEquals(cards, round)
+    }
+
+    @Test
+    fun `普通卡片不写 todos 字段 旧数据读作空清单`() {
+        val json = JsonCodec.toolCardsToJson(
+            listOf(ToolCard(callId = "c1", tool = "glob", input = "*.kt", state = "done")),
+        )
+        assertTrue("普通卡片保持原有 JSON 形状", !json.contains("todos"))
+
+        val old = JsonCodec.toolCardsFromJson("""[{"callId":"x","tool":"glob","state":"done"}]""")
+        assertTrue(old[0].todos.isEmpty())
+    }
+
+    @Test
     fun `子代理前缀解析`() {
         val card = ToolCard(callId = "s", tool = ToolCard.SUBAGENT_PREFIX + "thinker")
         assertEquals("thinker", card.subagentName)

@@ -2,6 +2,7 @@ package com.freebuff.core.data.repository
 
 import com.freebuff.core.data.network.ChatMessage
 import com.freebuff.core.model.AgentLoop
+import com.freebuff.core.model.TodoList
 import com.freebuff.core.model.ToolCallReq
 import com.freebuff.core.model.ToolErrors
 import com.freebuff.core.model.ToolOutcome
@@ -182,6 +183,30 @@ class AgentLoopRunnerTest {
         assertEquals("a 执行、b 复用、c 执行", 2, host.dispatched.count { it.name == "calculator" })
         assertTrue(host.cards[1].reused)
         assertFalse(host.cards[2].reused)
+    }
+
+    @Test
+    fun `任务清单的重复调用仍会执行 —— 每次都要刷新卡片`() = runTest {
+        // 复用会让本次调用的卡片没有清单可显示;清单更新是纯本地且幂等的,重跑没有代价。
+        // 「原地重发」仍按重复计数(见下面的 repeatRounds),不会因此烧到轮次上限。
+        val host = FakeHost(
+            script = { r ->
+                when (r) {
+                    1 -> FakeRound(calls = listOf(call("call-1", TodoList.TOOL, """{"todos":[{"content":"A"}]}""")))
+                    2 -> FakeRound(calls = listOf(call("call-2", TodoList.TOOL, """{"todos":[{"content":"A"}]}""")))
+                    else -> FakeRound(calls = listOf(call("call-done", AgentLoop.COMPLETION_TOOL, """{"summary":"ok"}""")))
+                }
+            },
+            onDispatch = { _, _ -> ToolOutcome("任务清单已更新") },
+        )
+
+        runner.run("session-1", host)
+
+        assertEquals("两次都要真的执行", 2, host.dispatched.count { it.name == TodoList.TOOL })
+        assertTrue(
+            "清单卡片不能被标成复用",
+            host.cards.filter { it.outcome.content == "任务清单已更新" }.none { it.reused },
+        )
     }
 
     @Test

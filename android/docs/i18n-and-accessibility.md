@@ -125,8 +125,8 @@ grep -A2 "string/chat_home_title" res.txt     # 应看到 () "Chats" 与 (zh) "�
 **UI 模块(`app/`、`feature/`、`core/ui/`)的界面文案已经清完**,剩下的都在没有 `Context` 的纯模块里,分两类:
 
 1. **给模型看的文案(§2 明确不翻译,继续留中文)**:`core/model` 的工具说明书/错误信封
-   (`Tools.kt` 159 处、`ToolErrors.kt` 76 处、`GitRef.kt` 24 处)与 `core/data` 的提示词、
-   工具执行说明与 GitHub 请求契约(`ToolExecutors.kt` 75 处、`GithubApi.kt` 13 处)。
+   (`Tools.kt` 170 处、`ToolErrors.kt` 76 处、`TodoList.kt` 22 处、`GitRef.kt` 24 处)与 `core/data` 的提示词、
+   工具执行说明与 GitHub 请求契约(`ToolExecutors.kt` 90 处、`GithubApi.kt` 13 处)。
    注:数字随 M1(T1/T2/T3)新增四个 GitHub 工具与写路径校验而上升 —— 上升的部分全部落在上面的
    「不翻译」类别里,`app/`、`feature/`、`core/ui/` 的界面文案仍然一律进资源(基线里这三个目录为空)。
 2. **确实会显示给用户、但目前没法直接翻译的**:
@@ -134,7 +134,7 @@ grep -A2 "string/chat_home_title" res.txt     # 应看到 () "Chats" 与 (zh) "�
      但数据层没有 `Context`。要真正多语言,得让 `ApiError` 带上**结构**(它已经是 sealed class:状态码/目标/主机名都有),
      由 UI 侧按类型映射到资源,`message` 只当兜底。
    - `core/model` 的状态牌与会话分组(`MsgSteps.kt` 13 处:连接 / 正在生成 / (已停止生成);
-     `SessionGrouping.kt` 9 处:今天 / 昨天 / 7 天内)、工具卡片名(`AgentEvents.kt` 42 处「读取文件」这类)。
+     `SessionGrouping.kt` 9 处:今天 / 昨天 / 7 天内)、工具卡片名(`AgentEvents.kt` 38 处「读取文件」这类)。
      迁移方式与 `AgentNotify` 相同:**保留中文默认值 + 增加文案参数**,由有 `Context` 的一侧传入,
      纯模块的单测不受影响。
 

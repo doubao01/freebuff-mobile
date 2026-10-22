@@ -12,6 +12,7 @@ import com.freebuff.core.data.db.toEntity
 import com.freebuff.core.model.ChatMsg
 import com.freebuff.core.model.MsgStep
 import com.freebuff.core.model.MsgSteps
+import com.freebuff.core.model.TodoList
 import com.freebuff.core.model.ToolCard
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -281,6 +282,36 @@ class SessionRepositoryTest {
 
         repo.replaceMessage(s.id, "m2", last.copy(text = "回答(改)"))
         assertEquals(listOf("问题", "回答(改)"), repo.get(s.id)!!.messages.map { it.text })
+    }
+
+    @Test
+    fun `任务清单随消息落库 —— 重开会话仍能看到逐项状态`() = runTest {
+        val s = repo.create("带清单的会话")
+        repo.appendMessages(
+            s.id,
+            listOf(
+                ChatMsg("m1", "user", text = "帮我重构"),
+                ChatMsg(
+                    "m2", "agent", text = "先拆三步",
+                    tools = listOf(
+                        ToolCard(
+                            callId = "t1", tool = TodoList.TOOL, input = "共 2 项", state = "done",
+                            todos = listOf(
+                                TodoList.Item("读 README", TodoList.COMPLETED),
+                                TodoList.Item("改配置", TodoList.PENDING),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        // 重新从库里读(等价于重开 App / 重进会话):清单不能只剩一段文字
+        val reopened = repo.get(s.id)!!
+        val card = reopened.messages.first { it.id == "m2" }.tools.single()
+        assertEquals(TodoList.TOOL, card.tool)
+        assertEquals(listOf("读 README", "改配置"), card.todos.map { it.content })
+        assertEquals(listOf(TodoList.COMPLETED, TodoList.PENDING), card.todos.map { it.status })
     }
 
     /* ---------------- 全内存 DAO(会话/消息真实读写,其余无需关心) ---------------- */

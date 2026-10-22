@@ -1,9 +1,9 @@
 # 端侧能力扩展路线图(从 9 个只读工具到「能改代码」;M1 已落地)
 
 > 现状一句话:**M1 已落地** —— 端侧 agent 能在手机上真的完成「建分支 → 提交文件 → 开 PR」(T1 路由收口 +
-> T2 写路径 + T3 计划模式;逐条证据见 §5)。仍未具备的是「交互 + 任务管理 + 本地工作区」三类能力:
-> `write_todos`、`ask_user`、`run_terminal_command`(Android 无任意进程执行,只在路线 B 有意义)、
-> SAF 目录工作区。对照后端运行时的 36 个工具(`docs/agent-architecture.md` §1.1),
+> T2 写路径 + T3 计划模式;逐条证据见 §5)。T5 已落了第一步:`write_todos` 的清单卡片随消息持久化。
+> 仍未具备的是「交互 + 本地工作区」两类能力:`ask_user`、`run_terminal_command`(Android 无任意进程执行,
+> 只在路线 B 有意义)、SAF 目录工作区。对照后端运行时的 36 个工具(`docs/agent-architecture.md` §1.1),
 > 差距已经从「能不能写」变成「写之外还缺什么」。
 >
 > 本文把差距拆成可独立交付的任务,并给出验收标准。**当前状态与理由都以仓库代码为准**,不是愿望清单。
@@ -14,7 +14,7 @@
 
 | 环节 | 位置 | 现状 |
 |---|---|---|
-| 工具定义(给模型的说明书 + schema) | `core/model/Tools.kt` `DefaultTools.ALL` | **15 条**:`web_search` `web_fetch` `github_search_repositories` `github_get_file` `github_get_readme` `github_list_branches` `github_create_branch` `github_commit_files` `github_create_pull_request` `calculator` `current_time` `save_memory` `memory_recall` `spawn_subagent` `task_completed` |
+| 工具定义(给模型的说明书 + schema) | `core/model/Tools.kt` `DefaultTools.ALL` | **16 条**:`web_search` `web_fetch` `github_search_repositories` `github_get_file` `github_get_readme` `github_list_branches` `github_create_branch` `github_commit_files` `github_create_pull_request` `calculator` `current_time` `save_memory` `memory_recall` `write_todos` `spawn_subagent` `task_completed` |
 | 执行分派 | `core/data/tools/ToolExecutors.execute(call, tools, attempt, host)` | **单入口**(T1 已收口):按注册表 `route` 分流 —— `DATA` 走内部分派表(`dispatchedTools` 与注册表 DATA 集合全等,漏写即红),`HOST` 回调 `ToolHost`(ChatViewModel 实现,闭包携带仓库/会话/UI 回调) |
 | 参数体检 / 归一 | `DefaultTools.validate` / `normalize` | 已通用(未知参数名、缺必填、越界、闭集、别名),新工具只需写 `Param` |
 | 权限分级 | `core/model/ToolPermissions.kt` | 默认分级的**唯一来源是注册表**(`AgentTool.permission`),不再有第二份手抄清单;只读 → `ALLOW`,写工具与 `save_memory` → `CONFIRM`,未登记工具名 → `CONFIRM`(兜底) |
@@ -59,7 +59,7 @@ Node/Python 运行时。`run_terminal_command` 无法忠实移植;要它只能�
 - `TOOL_LABELS` 改为从注册表派生(现在是两份手工清单,`web_search` 还重复了一条);
 - `activeTools()` 增加能力裁剪参数(记忆 / 计划模式 / 工作区是否已授权),写成纯函数便于单测。
 
-**验收**:现有 11 个工具行为不变(即今天 15 个里的那 11 个;`:core:model:test :core:data:testDebugUnitTest` 全绿);
+**验收**:现有 11 个工具行为不变(即今天 16 个里的那 11 个;`:core:model:test :core:data:testDebugUnitTest` 全绿);
 新增一个工具只需改 1 个文件即能被模型看到、能执行、有权限、有标签 —— 用一个测试工具证明。
 
 ### T2(里程碑 M1)GitHub 写路径闭环:分支 → 提交 → PR —— ✅ 已落地(端到端真机验证待你提供测试仓库)
@@ -106,11 +106,17 @@ Node/Python 运行时。`run_terminal_command` 无法忠实移植;要它只能�
   二进制文件拒绝读写;不做递归删除;
 - 验收:单测覆盖路径逃逸/大小/编码/二进制拒绝;真机跑通「授权目录 → 读 → 改一个文件 → 撤销」。
 
-### T5(里程碑 M3)任务管理与交互类工具
+### T5(里程碑 M3)任务管理与交互类工具 —— 🚧 部分落地(`write_todos`)
 
-- `write_todos`(清单卡片 + 持久化到会话)、`create_plan`(计划模式产物)、`suggest_followups`(卡片)、
-  `think_deeply`(推理档位)、`ask_user`(**真挂起循环等用户选择**,复用 `pendingConfirmation` 的挂起模式);
-- 验收:`ask_user` 挂起后「停止」按钮能中断、超时/取消语义明确;清单卡片与消息一起持久化、重开会话仍在。
+- ✅ `write_todos`:清单写进工具卡片(逐项 content/status),随消息一起落库 —— 重开会话仍是原来那几项;
+  状态只认 pending / in_progress / completed(英文同义词与中文说法都能归一),执行结果把整份清单回给模型,
+  免得长任务里「排到哪一步」全靠它自己回忆。工具是 ALLOW + HOST 路由(要写当前会话的卡片),
+  不受计划模式与记忆开关影响。见 `core:model/TodoList.kt`、`ChatViewModel.executeWriteTodos`、
+  `ChatScreen.TodoChecklist`;单测 `TodoListTest` / `ToolCardCodecTest`(往返)
+- ⬜ 其余:`create_plan`(计划模式产物)、`suggest_followups`(卡片)、`think_deeply`(推理档位)、
+  `ask_user`(**真挂起循环等用户选择**,复用 `pendingConfirmation` 的挂起模式);
+- 剩余验收:`ask_user` 挂起后「停止」按钮能中断、超时/取消语义明确。清单卡片那一条已做到
+  (消息里持久化 + 重开会话仍在),但仍未在模拟器上跑一次目视回归。
 
 ### T6(里程碑 M4,路线 B)远端会话与真终端
 

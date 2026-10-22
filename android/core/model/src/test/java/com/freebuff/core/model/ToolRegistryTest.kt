@@ -89,12 +89,20 @@ class ToolRegistryTest {
         // HOST 工具在会话宿主里执行(记忆 / 子代理),其余必须落在 DATA 路由上,
         // 由 ToolExecutorsTest 断言「DATA 路由的每个工具都有真实分派」。
         assertEquals(
-            setOf("save_memory", "memory_recall", Subagent.TOOL_NAME),
+            setOf("save_memory", "memory_recall", Subagent.TOOL_NAME, TodoList.TOOL),
             DefaultTools.ofRoute(ToolRoute.HOST).map { it.name }.toSet(),
         )
         val data = DefaultTools.ofRoute(ToolRoute.DATA).map { it.name }
         assertTrue(data.isNotEmpty())
         assertTrue("DATA 与 HOST 不能重叠", data.none { it in DefaultTools.ofRoute(ToolRoute.HOST).map { h -> h.name } })
+    }
+
+    @Test
+    fun `任务清单不受记忆开关与计划模式影响`() {
+        // 它不是对外写入,而是「把计划摆出来」:计划模式下更该有;关记忆也与它无关。
+        val off = DefaultTools.forCapabilities(memory = false, planMode = true).map { it.name }
+        assertTrue("计划模式下仍要能维护清单", off.contains(TodoList.TOOL))
+        assertTrue(DefaultTools.isKnown(TodoList.TOOL, DefaultTools.forCapabilities(memory = false)))
     }
 
     @Test

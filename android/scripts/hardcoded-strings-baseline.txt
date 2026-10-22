@@ -29,8 +29,9 @@ core/model/src/main/java/com/freebuff/core/model/Models.kt 2
 core/model/src/main/java/com/freebuff/core/model/MsgSteps.kt 13
 core/model/src/main/java/com/freebuff/core/model/SessionGrouping.kt 9
 core/model/src/main/java/com/freebuff/core/model/Subagent.kt 15
+core/model/src/main/java/com/freebuff/core/model/TodoList.kt 22
 core/model/src/main/java/com/freebuff/core/model/ToolErrors.kt 76
-core/model/src/main/java/com/freebuff/core/model/Tools.kt 161
+core/model/src/main/java/com/freebuff/core/model/Tools.kt 170
 core/ui/src/main/java/com/freebuff/core/ui/navigation/AppNavigator.kt 1
 feature/chat/src/main/java/com/freebuff/feature/chat/ChatScreen.kt 1
-feature/chat/src/main/java/com/freebuff/feature/chat/ChatViewModel.kt 18
+feature/chat/src/main/java/com/freebuff/feature/chat/ChatViewModel.kt 20

@@ -4,6 +4,7 @@ import com.freebuff.core.data.network.ChatMessage
 import com.freebuff.core.model.AgentLoop
 import com.freebuff.core.model.ContextPolicy
 import com.freebuff.core.model.MsgSteps
+import com.freebuff.core.model.TodoList
 import com.freebuff.core.model.ToolCallReq
 import com.freebuff.core.model.ToolErrors
 import com.freebuff.core.model.ToolOutcome
@@ -172,7 +173,11 @@ class AgentLoopRunner @Inject constructor() {
                     )
                     val attempt = (failStreak[c.name] ?: 0) + 1
                     val sig = repeats.signature(c)
-                    val cached = repeats.cachedOutput(sig)
+                    val seen = repeats.cachedOutput(sig)
+                    // 清单更新必须真的执行:它的产物是卡片,复用只会给本次调用留一张空卡。
+                    // 但相同的清单仍算「重复」—— 模型原地重发同一份清单时,repeatRounds 照样会把它停下。
+                    val cached = if (c.name == TodoList.TOOL) null else seen
+                    if (seen != null && c.name == TodoList.TOOL) repeatedThisRound++
                     val outcome = when {
                         cached != null -> {
                             // 完全相同的调用:复用上次结果,不重新执行(某些模型会把同一组工具整轮重放)。

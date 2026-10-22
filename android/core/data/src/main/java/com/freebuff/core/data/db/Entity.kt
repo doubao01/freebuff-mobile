@@ -13,6 +13,7 @@ import com.freebuff.core.model.MemoryEntry
 import com.freebuff.core.model.MsgStep
 import com.freebuff.core.model.Probe
 import com.freebuff.core.model.Session
+import com.freebuff.core.model.TodoList
 import com.freebuff.core.model.ToolCard
 import org.json.JSONArray
 import org.json.JSONObject
@@ -223,17 +224,32 @@ object JsonCodec {
         }
     }
 
+    /**
+     * 工具卡片序列化。
+     *
+     * `todos` 只在非空时写入:普通卡片保持原有 JSON 形状,旧版本读到的数据也不多一个空数组;
+     * 写进去的是逐项 content/status,不是渲染后的文案 —— 清单要能重新渲染,而不是回读一段字符串。
+     */
     fun toolCardsToJson(cards: List<ToolCard>): String {
         val arr = JSONArray()
         cards.forEach { c ->
-            arr.put(
-                JSONObject()
-                    .put("callId", c.callId)
-                    .put("tool", c.tool)
-                    .put("input", c.input)
-                    .put("output", c.output)
-                    .put("state", c.state),
-            )
+            val o = JSONObject()
+                .put("callId", c.callId)
+                .put("tool", c.tool)
+                .put("input", c.input)
+                .put("output", c.output)
+                .put("state", c.state)
+            if (c.todos.isNotEmpty()) {
+                o.put(
+                    "todos",
+                    JSONArray().apply {
+                        c.todos.forEach { it2 ->
+                            put(JSONObject().put("content", it2.content).put("status", it2.status))
+                        }
+                    },
+                )
+            }
+            arr.put(o)
         }
         return arr.toString()
     }
@@ -250,6 +266,14 @@ object JsonCodec {
                     input = o.optString("input"),
                     output = o.optString("output"),
                     state = o.optString("state", "done"),
+                    todos = o.optJSONArray("todos")?.let { arr ->
+                        (0 until arr.length()).mapNotNull { i ->
+                            val t = arr.optJSONObject(i) ?: return@mapNotNull null
+                            val content = t.optString("content")
+                            if (content.isBlank()) null
+                            else TodoList.Item(content, TodoList.normalizeStatus(t.optString("status")))
+                        }
+                    }.orEmpty(),
                 )
             }
         } catch (e: Exception) {

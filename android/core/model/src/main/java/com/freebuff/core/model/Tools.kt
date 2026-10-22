@@ -460,6 +460,30 @@ object DefaultTools {
             ),
         ),
         AgentTool(
+            name = TodoList.TOOL,
+            label = "更新任务清单",
+            permission = ToolPermission.ALLOW,
+            route = ToolRoute.HOST,
+            description = "维护本次任务的待办清单,让用户随时看到进度。多步任务开始时先列 3~8 项;" +
+                "每完成一步就再调一次,更新状态。每次都要传**完整清单**(整份覆盖,不是只传变化项)。" +
+                "单项任务或纯问答不要调用。status 只能取 pending / in_progress / completed,同一时间最多一项 in_progress。",
+            example = "write_todos({\"todos\":[{\"content\":\"读 README\",\"status\":\"completed\"}," +
+                "{\"content\":\"改配置\",\"status\":\"in_progress\"}]})",
+            params = listOf(
+                AgentTool.Param(
+                    "todos", "array", "完整任务清单(1~20 项),按执行顺序排列",
+                    itemFields = listOf(
+                        AgentTool.Param("content", "string", "一条任务:动词开头的短句,一句话说清要做什么"),
+                        AgentTool.Param(
+                            "status", "string", "状态:pending=待办,in_progress=正在做,completed=已完成",
+                            required = false,
+                            enum = listOf(TodoList.PENDING, TodoList.IN_PROGRESS, TodoList.COMPLETED),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+        AgentTool(
             name = Subagent.TOOL_NAME,
             label = "派出子代理",
             permission = ToolPermission.ALLOW,
@@ -576,7 +600,7 @@ object DefaultTools {
         val arr = raw as? JSONArray
             ?: return listOf(ToolErrors.ArgProblem.Type(p.name, raw.toString().take(40), "数组"))
         if (arr.length() == 0) {
-            return listOf(ToolErrors.ArgProblem.Missing(p.name + "[](至少一个文件)"))
+            return listOf(ToolErrors.ArgProblem.Missing(p.name + "[](至少一项)"))
         }
         val problems = mutableListOf<ToolErrors.ArgProblem>()
         for (i in 0 until arr.length()) {

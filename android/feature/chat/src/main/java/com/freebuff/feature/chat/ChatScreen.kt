@@ -39,12 +39,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.freebuff.core.model.ChatMsg
 import com.freebuff.core.model.ConfirmPreview
 import com.freebuff.core.model.MessageOps
+import com.freebuff.core.model.TodoList
 import com.freebuff.core.model.ToolCard
 import com.freebuff.core.model.toolDisplayName
 import com.freebuff.core.model.toolGlyph
@@ -702,6 +704,7 @@ private fun ToolCards(cards: List<ToolCard>) {
 private fun ToolCardItem(card: ToolCard, last: Boolean) {
     val t = LocalTokens.current
     val expanded = remember(card.callId) { mutableStateOf(false) }
+    val todos = card.todos
     val stateColor = when {
         card.isWaiting -> t.accent
         card.isRunning -> t.accent
@@ -743,6 +746,12 @@ private fun ToolCardItem(card: ToolCard, last: Boolean) {
                 Text(toolDisplayName(card.tool), color = t.text, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
             }
             Spacer(Modifier.weight(1f))
+            if (todos.isNotEmpty()) {
+                Text(
+                    TodoList.progress(todos), color = t.text3, fontSize = 10.sp, fontWeight = FontWeight.Medium,
+                )
+                Spacer(Modifier.width(6.dp))
+            }
             Text(
                 when {
                     card.isWaiting -> stringResource(R.string.chat_tool_state_waiting)
@@ -755,14 +764,20 @@ private fun ToolCardItem(card: ToolCard, last: Boolean) {
             )
             Text(if (expanded.value) " ⌃" else " ⌄", color = t.text3, fontSize = 10.sp)
         }
-        // 摘要行:输入摘要(路径/命令/搜索词);子代理显示实时输出尾部
-        val summary = if (subagent != null && card.isRunning) {
-            card.input.lines().lastOrNull { it.isNotBlank() }?.take(80).orEmpty().ifBlank { stringResource(R.string.chat_tool_starting) }
-        } else card.input.take(80)
-        if (summary.isNotBlank()) {
-            Spacer(Modifier.height(4.dp))
-            Text(summary, color = t.text3, fontSize = 10.5.sp, maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        // 清单卡片:逐项渲染状态(不是一段参数摘要);收起时只显示前几项
+        if (todos.isNotEmpty()) {
+            TodoChecklist(todos, expanded.value)
+        } else {
+            // 摘要行:输入摘要(路径/命令/搜索词);子代理显示实时输出尾部
+            val summary = if (subagent != null && card.isRunning) {
+                card.input.lines().lastOrNull { it.isNotBlank() }?.take(80).orEmpty()
+                    .ifBlank { stringResource(R.string.chat_tool_starting) }
+            } else card.input.take(80)
+            if (summary.isNotBlank()) {
+                Spacer(Modifier.height(4.dp))
+                Text(summary, color = t.text3, fontSize = 10.5.sp, maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+            }
         }
         // 展开区:完整输入/输出
         if (expanded.value) {
@@ -775,6 +790,42 @@ private fun ToolCardItem(card: ToolCard, last: Boolean) {
         }
     }
 }
+
+/** 清单卡片正文:逐项状态 + 内容;收起时只显示前 [TOOL_COLLAPSED_TODOS] 项,展开看全。 */
+@Composable
+private fun TodoChecklist(todos: List<TodoList.Item>, expanded: Boolean) {
+    val t = LocalTokens.current
+    val shown = if (expanded) todos else todos.take(TOOL_COLLAPSED_TODOS)
+    Spacer(Modifier.height(6.dp))
+    shown.forEachIndexed { i, item ->
+        if (i > 0) Spacer(Modifier.height(4.dp))
+        val (glyph, color, label) = when (item.status) {
+            TodoList.COMPLETED -> Triple("☑", t.ok, stringResource(R.string.chat_todo_completed))
+            TodoList.IN_PROGRESS -> Triple("◐", t.accent, stringResource(R.string.chat_todo_in_progress))
+            else -> Triple("☐", t.text3, stringResource(R.string.chat_todo_pending))
+        }
+        Row(verticalAlignment = Alignment.Top) {
+            Text(glyph, color = color, fontSize = 11.sp)
+            Spacer(Modifier.width(6.dp))
+            Text(
+                item.content,
+                color = if (item.isDone) t.text3 else t.text2,
+                fontSize = 11.sp, lineHeight = 16.sp,
+                textDecoration = if (item.isDone) TextDecoration.LineThrough else null,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(label, color = color, fontSize = 9.5.sp)
+        }
+    }
+    if (!expanded && todos.size > shown.size) {
+        Spacer(Modifier.height(4.dp))
+        Text("+" + (todos.size - shown.size), color = t.text3, fontSize = 10.sp)
+    }
+}
+
+/** 收起时显示的清单条数:再长就把一张卡片撑成一屏。 */
+private const val TOOL_COLLAPSED_TODOS = 5
 
 @Composable
 private fun DetailLine(label: String, value: String) {

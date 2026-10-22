@@ -175,4 +175,9 @@
     <string name="chat_cd_open_chat">Open chat</string>
     <string name="chat_cd_composer_mention">Insert @ mention</string>
     <string name="chat_cd_composer_file">Attach a file reference</string>
+
+    <!-- 任务清单卡片(write_todos) -->
+    <string name="chat_todo_pending">Pending</string>
+    <string name="chat_todo_in_progress">In progress</string>
+    <string name="chat_todo_completed">Done</string>
 </resources>

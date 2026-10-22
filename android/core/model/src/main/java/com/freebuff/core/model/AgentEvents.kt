@@ -58,13 +58,19 @@ sealed interface AgentEvent {
     data class Calls(val calls: List<ToolCallReq>) : AgentEvent
 }
 
-/** 消息内嵌的工具卡片(随消息持久化)。state: waiting | running | done | error | reused。 */
+/**
+ * 消息内嵌的工具卡片(随消息持久化)。state: waiting | running | done | error | reused。
+ *
+ * [todos] 是 `write_todos` 的结构化清单:卡片不只存一段文字摘要,而是把逐项状态一起落库 ——
+ * 重开会话仍能按原样渲染「哪几项做完了」。其它工具恒为空表。
+ */
 data class ToolCard(
     val callId: String,
     val tool: String,
     val input: String = "",
     val output: String = "",
     val state: String = "running",
+    val todos: List<TodoList.Item> = emptyList(),
 ) {
     val isRunning: Boolean get() = state == "running"
     val isError: Boolean get() = state == "error"

@@ -39,6 +39,7 @@ import com.freebuff.core.model.MsgSteps
 import com.freebuff.core.model.OfficialModel
 import com.freebuff.core.model.Session
 import com.freebuff.core.model.Subagent
+import com.freebuff.core.model.TodoList
 import com.freebuff.core.model.ToolCallReq
 import com.freebuff.core.model.ToolCard
 import com.freebuff.core.model.ToolOutcome
@@ -959,6 +960,7 @@ class ChatViewModel @Inject constructor(
         ): com.freebuff.core.model.ToolOutcome? = when (call.name) {
             "save_memory" -> executeSaveMemory(call, attempt)
             "memory_recall" -> executeMemoryRecall(call, attempt)
+            TodoList.TOOL -> executeWriteTodos(sessionId, call, attempt)
             // 子代理:端侧真执行(独立上下文 + 只读白名单),结论压缩后当普通工具结果回填
             Subagent.TOOL_NAME -> runSubagent(sessionId, call, target, attempt)
             else -> null
@@ -1053,6 +1055,55 @@ class ChatViewModel @Inject constructor(
         flushStreamText()
         val last = sessionRepo.lastMessage(sessionId, "agent") ?: return
         val cards = last.tools.map { if (it.callId == callId) it.copy(state = state) else it }
+        sessionRepo.replaceMessage(sessionId, last.id, last.copy(tools = cards))
+    }
+
+    /**
+     * write_todos 端侧执行:清单写进卡片(随消息持久化),同时把整份清单一字不差地回给模型。
+     *
+     * 为什么走 HOST 而不是 DATA 路由:它要改的是**当前会话最后一条 assistant 消息里的卡片** ——
+     * 那需要 sessionId 与消息写入,正是 [hostFor] 闭包捕获的东西(与记忆/子代理同一条路)。
+     *
+     * 解析不出来时不静默成功:回带处方的信封,让模型补齐字段后再发一次。空清单会让界面
+     * 出现一张永远空着的卡片,比报错更难查。
+     */
+    private suspend fun executeWriteTodos(
+        sessionId: String,
+        c: ToolCallReq,
+        attempt: Int = 1,
+    ): ToolOutcome {
+        val example = com.freebuff.core.model.DefaultTools.find(TodoList.TOOL)?.example.orEmpty()
+        val items = TodoList.parse(c.argsJson)
+            ?: return ToolOutcome(
+                com.freebuff.core.model.ToolErrors.report(
+                    com.freebuff.core.model.ToolErrors.Kind.BAD_VALUE, TodoList.TOOL,
+                    "todos 缺失、为空,或每一项都没有 content",
+                    "传完整清单:每项至少要有 content,status 取 pending / in_progress / completed",
+                    attempt, example,
+                ),
+                isError = true,
+            )
+        setTodoCard(sessionId, c.callId, items)
+        return ToolOutcome(TodoList.summary(items))
+    }
+
+    /**
+     * 把清单写进该调用的卡片(结构化 todos + 摘要行)。
+     * 卡片不存在时补一张 —— 流式工具事件缺失(只拿到最后的结构化 Calls)也要有卡可看。
+     */
+    private suspend fun setTodoCard(sessionId: String, callId: String, items: List<TodoList.Item>) {
+        flushStreamText()
+        val last = sessionRepo.lastMessage(sessionId, "agent") ?: return
+        val cards = last.tools.toMutableList()
+        val idx = cards.indexOfFirst { it.callId == callId }
+        val cur = cards.getOrNull(idx) ?: ToolCard(callId = callId, tool = TodoList.TOOL)
+        val updated = cur.copy(
+            tool = TodoList.TOOL,
+            input = TodoList.brief(items),
+            todos = items,
+            state = "running",
+        )
+        if (idx >= 0) cards[idx] = updated else cards += updated
         sessionRepo.replaceMessage(sessionId, last.id, last.copy(tools = cards))
     }
 
